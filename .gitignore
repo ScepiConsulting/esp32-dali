@@ -1,0 +1,7 @@
+logs
+assets
+ai_helpers
+esp32_dali_bridge/build
+esp32_dali_ballast/build
+esp32_wifi_test/build
+.DS_Store
