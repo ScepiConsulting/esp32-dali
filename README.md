@@ -2,7 +2,29 @@
 
 A collection of ESP32-S3 based projects for DALI (Digital Addressable Lighting Interface) control and WiFi connectivity testing.
 
-## 📁 Projects
+## ⚠️ Disclaimer
+
+> **This repository was created with extensive use of AI assistance (Claude/Cascade).**
+> 
+> As a result, the code may contain:
+> - Bugs or unexpected behavior
+> - Suboptimal or inefficient implementations
+> - Redundant or overly verbose code
+> 
+> **This project was created for internal use only.** Feel free to use and modify it for your own non-commercial purposes, but please be aware of the above limitations. No warranty is provided.
+> 
+> Contributions, bug reports, and improvements are welcome!
+
+## � Acknowledgments
+
+- **[python-dali](https://github.com/sde1000/python-dali/)** by Stephen Early - Excellent Python DALI library that served as a reference for protocol implementation
+- **[DALI Lighting Protocol](https://jared.geek.nz/2025/06/dali-lighting-protocol/)** by Jared Sanson - Fantastic article explaining DALI protocol details
+- DALI protocol implementation based on DALI_Lib
+- Web interfaces use modern CSS with CSS variables
+- MQTT integration via PubSubClient library
+- Projects follow IEC 62386 DALI standard
+
+## �📁 Projects
 
 ### 🎛️ [ESP32 DALI Bridge](esp32_dali_bridge/)
 
@@ -11,8 +33,9 @@ A professional bridge between DALI and MQTT, acting as a DALI master/controller.
 **Key Features:**
 - DALI bus communication and device control
 - Bus monitoring (detects external DALI masters)
+- Passive device discovery (learns devices from bus traffic)
 - MQTT integration with full topic support
-- Device scanning and command queue
+- Device scanning, commissioning, and command queue
 - Web interface with modern UI
 - OTA updates and diagnostics
 
@@ -28,7 +51,8 @@ A virtual DALI ballast emulator that appears on the bus as a controllable DALI s
 
 **Key Features:**
 - Emulates DALI ballast behavior
-- Responds to queries within 22ms
+- DALI-2 compliant immediate responses (2.91-22ms)
+- DT8 color support (RGB, RGBW, Color Temperature)
 - Configurable address (0-63)
 - MQTT state publishing
 - Fade and scene support
@@ -160,7 +184,8 @@ Ballast  Real     Real     Real
 ## 🔒 Security Notes
 
 - Web interfaces use HTTP Basic Auth (not encrypted without HTTPS)
-- Credentials stored in NVS (plain text)
+- Credentials stored in NVS (plain text, not in source code)
+- No sensitive data in source code - credentials entered via web UI
 - Default AP passwords should be changed before deployment
 - Consider using VPN or isolated network for production
 
@@ -176,14 +201,18 @@ These are personal projects, but suggestions and bug reports are welcome.
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+This project is licensed under **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International).
 
-## 🙏 Acknowledgments
+**You are free to:**
+- **Share** — copy and redistribute the material
+- **Adapt** — remix, transform, and build upon the material
 
-- DALI protocol implementation based on DALI_Lib
-- Web interfaces use modern CSS with CSS variables
-- MQTT integration via PubSubClient library
-- Projects follow IEC 62386 DALI standard
+**Under the following terms:**
+- **Attribution** — You must give appropriate credit
+- **NonCommercial** — You may not use the material for commercial purposes
+- **ShareAlike** — If you remix or transform, you must distribute under the same license
+
+See [LICENSE](LICENSE) file for full details.
 
 ---
 

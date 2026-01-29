@@ -8,9 +8,7 @@ Dali dali;
 BallastState ballastState;
 BallastMessage recentMessages[RECENT_MESSAGES_SIZE];
 uint8_t recentMessagesIndex = 0;
-QueuedResponse responseQueue[RESPONSE_QUEUE_SIZE];
-uint8_t responseQueueHead = 0;
-uint8_t responseQueueTail = 0;
+// Queue removed - DALI-2 backward frames have no retry mechanism
 unsigned long lastBusActivityTime = 0;
 bool busIsIdle = true;
 
@@ -73,8 +71,15 @@ void loadBallastConfig() {
   preferences.begin("ballast", true);
 
   ballastState.address_mode_auto = preferences.getBool("addr_auto", true);
-  ballastState.short_address = preferences.getUChar("address", ballastState.address_mode_auto ? 255 : 0);
+  ballastState.short_address = preferences.getUChar("address", 255);
+  ballastState.address_source = preferences.getUChar("addr_src", ADDR_UNASSIGNED);
   ballastState.device_type = preferences.getUChar("dev_type", DT0_NORMAL);
+  ballastState.active_color_type = preferences.getUChar("color_type", DT8_MODE_RGBWAF);
+  
+  // Migration: if address is valid (0-63) but source is unassigned, assume it was manual
+  if (ballastState.short_address != 255 && ballastState.address_source == ADDR_UNASSIGNED) {
+    ballastState.address_source = ADDR_MANUAL;
+  }
   ballastState.min_level = preferences.getUChar("min_level", 1);
   ballastState.max_level = preferences.getUChar("max_level", 254);
   ballastState.power_on_level = preferences.getUChar("power_on", 254);
@@ -97,8 +102,13 @@ void loadBallastConfig() {
   ballastState.color_a = preferences.getUChar("color_a", 0);
   ballastState.color_f = preferences.getUChar("color_f", 0);
 
-  // DT8 Color Temperature
-  ballastState.color_temp_kelvin = preferences.getUShort("cct_kelvin", 4000);
+  // DT8 Color Temperature (stored as mirek internally, but saved as Kelvin for user convenience)
+  uint16_t saved_kelvin = preferences.getUShort("cct_kelvin", 4000);
+  ballastState.color_temp_mirek = (saved_kelvin > 0) ? (1000000 / saved_kelvin) : 250;  // Convert Kelvin to mirek
+  ballastState.color_temp_tc_coolest = 153;   // ~6500K
+  ballastState.color_temp_tc_warmest = 370;   // ~2700K
+  ballastState.color_temp_physical_coolest = 153;
+  ballastState.color_temp_physical_warmest = 370;
 
   for (int i = 0; i < 16; i++) {
     String key = "scene" + String(i);
@@ -131,7 +141,9 @@ void saveBallastConfig() {
 
   preferences.putBool("addr_auto", ballastState.address_mode_auto);
   preferences.putUChar("address", ballastState.short_address);
+  preferences.putUChar("addr_src", ballastState.address_source);
   preferences.putUChar("dev_type", ballastState.device_type);
+  preferences.putUChar("color_type", ballastState.active_color_type);
   preferences.putUChar("min_level", ballastState.min_level);
   preferences.putUChar("max_level", ballastState.max_level);
   preferences.putUChar("power_on", ballastState.power_on_level);
@@ -151,8 +163,9 @@ void saveBallastConfig() {
   preferences.putUChar("color_a", ballastState.color_a);
   preferences.putUChar("color_f", ballastState.color_f);
 
-  // DT8 Color Temperature
-  preferences.putUShort("cct_kelvin", ballastState.color_temp_kelvin);
+  // DT8 Color Temperature (convert mirek back to Kelvin for storage)
+  uint16_t kelvin_to_save = (ballastState.color_temp_mirek > 0) ? (1000000 / ballastState.color_temp_mirek) : 4000;
+  preferences.putUShort("cct_kelvin", kelvin_to_save);
 
   for (int i = 0; i < 16; i++) {
     String key = "scene" + String(i);
@@ -160,6 +173,9 @@ void saveBallastConfig() {
   }
 
   preferences.end();
+#ifdef DEBUG_SERIAL
+  Serial.println("[Ballast] Config saved to flash");
+#endif
 }
 
 void monitorDaliBus() {
@@ -241,75 +257,9 @@ bool isBusIdle() {
   return busIsIdle;
 }
 
-bool enqueueResponse(uint8_t data) {
-  uint8_t nextTail = (responseQueueTail + 1) % RESPONSE_QUEUE_SIZE;
-  if (nextTail == responseQueueHead) {
-#ifdef DEBUG_SERIAL
-    Serial.println("[Ballast] Response queue full!");
-#endif
-    incrementErrorCount();
-    return false;
-  }
-
-  responseQueue[responseQueueTail].data = data;
-  responseQueue[responseQueueTail].queued_at = millis();
-  responseQueue[responseQueueTail].retry_count = 0;
-  responseQueueTail = nextTail;
-  
-#ifdef DEBUG_SERIAL
-  Serial.printf("[Ballast] Response 0x%02X queued (queue size=%d)\n",
-                data, (responseQueueTail >= responseQueueHead) ? 
-                (responseQueueTail - responseQueueHead) : 
-                (RESPONSE_QUEUE_SIZE - responseQueueHead + responseQueueTail));
-#endif
-  
-  return true;
-}
-
-void processResponseQueue() {
-  if (responseQueueHead == responseQueueTail) return;
-  
-  if (!isBusIdle()) {
-#ifdef DEBUG_SERIAL
-    static unsigned long lastWarnTime = 0;
-    if (millis() - lastWarnTime > 1000) {
-      Serial.printf("[Ballast] Waiting for bus idle to send response (last activity: %lums ago)...\n", 
-                    millis() - lastBusActivityTime);
-      lastWarnTime = millis();
-    }
-#endif
-    return;
-  }
-
-  QueuedResponse resp = responseQueue[responseQueueHead];
-  responseQueueHead = (responseQueueHead + 1) % RESPONSE_QUEUE_SIZE;
-
-#ifdef DEBUG_SERIAL
-  Serial.printf("[Ballast] Sending queued response: 0x%02X (waited %lums)\n", 
-                resp.data, millis() - resp.queued_at);
-#endif
-
-  updateBusActivity();
-  
-  uint8_t response[1] = {resp.data};
-  int result = dali.tx_wait(response, 8, QUERY_RESPONSE_TIMEOUT_MS);
-
-  if (result < 0) {
-    incrementErrorCount();
-#ifdef DEBUG_SERIAL
-    Serial.println("[Ballast] Response transmission failed!");
-#endif
-    
-    if (resp.retry_count < MAX_RESPONSE_RETRIES) {
-      resp.retry_count++;
-      enqueueResponse(resp.data);
-#ifdef DEBUG_SERIAL
-      Serial.printf("[Ballast] Retrying response (attempt %d/%d)\n", 
-                    resp.retry_count + 1, MAX_RESPONSE_RETRIES + 1);
-#endif
-    }
-  }
-}
+// Note: DALI-2 backward frames have no retry mechanism
+// Response must be sent within 2.91-22ms after forward frame
+// If it fails, it fails - master will assume no response
 
 // Check if address byte is a DALI special command (broadcast to all devices)
 // Special commands have patterns: 101CCCCS (0xA1-0xBF odd) or 110CCCCS (0xC1-0xDF odd)
@@ -349,14 +299,24 @@ void processSpecialCommand(uint8_t cmd_byte, uint8_t param) {
       break;
 
     case 0xA5: // INITIALISE - enter initialisation mode
-      // param: 0x00 = all, 0xFF = unaddressed only, 0xAAAAAAA1 = specific address
-      if (param == 0x00 || param == 0xFF || 
-          (ballastState.short_address == ((param >> 1) & 0x3F) && (param & 0x01))) {
-        ballastState.initialise_state = true;
-        ballastState.withdraw_state = false;
+      // param: 0x00 = all devices, 0xFF = unaddressed only, (addr<<1)|1 = specific address
+      // Only respond if address_mode_auto is true (allows commissioning)
+      if (ballastState.address_mode_auto) {
+        bool should_init = false;
+        if (param == 0x00) {
+          should_init = true;  // All devices
+        } else if (param == 0xFF) {
+          should_init = (ballastState.short_address == 255);  // Unaddressed only
+        } else if ((param & 0x01) && ballastState.short_address == ((param >> 1) & 0x3F)) {
+          should_init = true;  // Specific address matches
+        }
+        if (should_init) {
+          ballastState.initialise_state = true;
+          ballastState.withdraw_state = false;
 #ifdef DEBUG_SERIAL
-        Serial.printf("[Special] INITIALISE - entering initialisation mode (param=0x%02X)\n", param);
+          Serial.printf("[Special] INITIALISE - entering initialisation mode (param=0x%02X)\n", param);
 #endif
+        }
       }
       break;
 
@@ -372,7 +332,7 @@ void processSpecialCommand(uint8_t cmd_byte, uint8_t param) {
     case 0xA9: // COMPARE - compare random address with search address
       if (ballastState.initialise_state && !ballastState.withdraw_state) {
         if (ballastState.random_address <= ballastState.search_address) {
-          enqueueResponse(0xFF);
+          sendBackwardFrame(0xFF);  // Send immediately, not queued
 #ifdef DEBUG_SERIAL
           Serial.printf("[Special] COMPARE - YES (0x%06X <= 0x%06X)\n",
                        ballastState.random_address, ballastState.search_address);
@@ -417,10 +377,11 @@ void processSpecialCommand(uint8_t cmd_byte, uint8_t param) {
           ballastState.random_address == ballastState.search_address) {
         uint8_t new_addr = (param >> 1) & 0x3F;
         ballastState.short_address = new_addr;
-        saveBallastConfig();
+        ballastState.address_source = ADDR_COMMISSIONED;  // Mark as commissioned via DALI
+        // Note: Not saving to flash - save manually via web UI
         publishBallastConfig();
 #ifdef DEBUG_SERIAL
-        Serial.printf("[Special] PROGRAM_SHORT_ADDRESS = %d\n", new_addr);
+        Serial.printf("[Special] PROGRAM_SHORT_ADDRESS = %d (commissioned)\n", new_addr);
 #endif
       }
       break;
@@ -429,7 +390,7 @@ void processSpecialCommand(uint8_t cmd_byte, uint8_t param) {
       if (ballastState.initialise_state) {
         uint8_t check_addr = (param >> 1) & 0x3F;
         if (check_addr == ballastState.short_address) {
-          enqueueResponse(0xFF);
+          sendBackwardFrame(0xFF);
 #ifdef DEBUG_SERIAL
           Serial.printf("[Special] VERIFY_SHORT_ADDRESS - YES (addr=%d)\n", check_addr);
 #endif
@@ -440,7 +401,7 @@ void processSpecialCommand(uint8_t cmd_byte, uint8_t param) {
     case 0xBB: // QUERY SHORT ADDRESS
       if (ballastState.initialise_state && !ballastState.withdraw_state &&
           ballastState.random_address == ballastState.search_address) {
-        enqueueResponse((ballastState.short_address << 1) | 0x01);
+        sendBackwardFrame((ballastState.short_address << 1) | 0x01);
 #ifdef DEBUG_SERIAL
         Serial.printf("[Special] QUERY_SHORT_ADDRESS - responding with %d\n", ballastState.short_address);
 #endif
@@ -511,7 +472,7 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
 
     case 0x1D: // StartQuiescentMode
       // Enter quiescent mode - stop sending events
-      ballastState.initialise_state = false;  // Use as quiescent flag
+      ballastState.quiescent_mode = true;
 #ifdef DEBUG_SERIAL
       Serial.println("[DALI-2] StartQuiescentMode - entering quiet mode");
 #endif
@@ -519,6 +480,7 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
 
     case 0x1E: // StopQuiescentMode
       // Exit quiescent mode - resume normal operation
+      ballastState.quiescent_mode = false;
 #ifdef DEBUG_SERIAL
       Serial.println("[DALI-2] StopQuiescentMode - resuming normal mode");
 #endif
@@ -529,6 +491,7 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
         uint8_t status = 0;
         // Bit 0: inputDeviceError
         // Bit 1: quiescentMode
+        if (ballastState.quiescent_mode) status |= 0x02;
         // Bit 2: shortAddress is MASK
         if (ballastState.short_address == 0xFF) status |= 0x04;
         // Bit 3: applicationActive
@@ -537,7 +500,7 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
         if (ballastState.reset_state) status |= 0x20;
         // Bit 6: resetState
         if (ballastState.reset_state) status |= 0x40;
-        enqueueResponse(status);
+        sendBackwardFrame(status);
 #ifdef DEBUG_SERIAL
         Serial.printf("[DALI-2] QueryDeviceStatus - responding 0x%02X\n", status);
 #endif
@@ -546,7 +509,7 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
 
     case 0x33: // QueryMissingShortAddress
       if (ballastState.short_address == 0xFF) {
-        enqueueResponse(0xFF);  // YES - missing short address
+        sendBackwardFrame(0xFF);  // YES - missing short address
 #ifdef DEBUG_SERIAL
         Serial.println("[DALI-2] QueryMissingShortAddress - YES (no address)");
 #endif
@@ -555,35 +518,35 @@ void processDeviceCommand(uint8_t inst_byte, uint8_t opcode) {
       break;
 
     case 0x34: // QueryVersionNumber
-      enqueueResponse(0x02);  // Version 2.0
+      sendBackwardFrame(0x02);  // Version 2.0
 #ifdef DEBUG_SERIAL
       Serial.println("[DALI-2] QueryVersionNumber - responding 0x02");
 #endif
       break;
 
     case 0x35: // QueryNumberOfInstances
-      enqueueResponse(0x01);  // 1 instance (the light)
+      sendBackwardFrame(0x01);  // 1 instance (the light)
 #ifdef DEBUG_SERIAL
       Serial.println("[DALI-2] QueryNumberOfInstances - responding 0x01");
 #endif
       break;
 
     case 0x36: // QueryContentDTR0
-      enqueueResponse(ballastState.dtr0);
+      sendBackwardFrame(ballastState.dtr0);
 #ifdef DEBUG_SERIAL
       Serial.printf("[DALI-2] QueryContentDTR0 - responding 0x%02X\n", ballastState.dtr0);
 #endif
       break;
 
     case 0x37: // QueryContentDTR1
-      enqueueResponse(ballastState.dtr1);
+      sendBackwardFrame(ballastState.dtr1);
 #ifdef DEBUG_SERIAL
       Serial.printf("[DALI-2] QueryContentDTR1 - responding 0x%02X\n", ballastState.dtr1);
 #endif
       break;
 
     case 0x38: // QueryContentDTR2
-      enqueueResponse(ballastState.dtr2);
+      sendBackwardFrame(ballastState.dtr2);
 #ifdef DEBUG_SERIAL
       Serial.printf("[DALI-2] QueryContentDTR2 - responding 0x%02X\n", ballastState.dtr2);
 #endif
@@ -727,7 +690,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_FADE_TIME:
       ballastState.fade_time = ballastState.dtr0 & 0x0F;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_fade_time";
       msg.value = ballastState.fade_time;
       msg.description = "Store DTR as fade time: " + String(ballastState.fade_time);
@@ -738,7 +700,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_FADE_RATE:
       ballastState.fade_rate = ballastState.dtr0 & 0x0F;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_fade_rate";
       msg.value = ballastState.fade_rate;
       msg.description = "Store DTR as fade rate: " + String(ballastState.fade_rate);
@@ -749,7 +710,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_MAX_LEVEL:
       ballastState.max_level = ballastState.dtr0;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_max_level";
       msg.value = ballastState.max_level;
       msg.description = "Store DTR as max level: " + String(ballastState.max_level);
@@ -760,7 +720,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_MIN_LEVEL:
       ballastState.min_level = ballastState.dtr0;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_min_level";
       msg.value = ballastState.min_level;
       msg.description = "Store DTR as min level: " + String(ballastState.min_level);
@@ -771,7 +730,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_POWER_ON_LEVEL:
       ballastState.power_on_level = ballastState.dtr0;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_power_on_level";
       msg.value = ballastState.power_on_level;
       msg.description = "Store DTR as power-on level: " + String(ballastState.power_on_level);
@@ -782,7 +740,6 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
 
     case DALI_STORE_DTR_AS_SYSTEM_FAILURE_LEVEL:
       ballastState.system_failure_level = ballastState.dtr0;
-      saveBallastConfig();
       msg.command_type = "store_dtr_as_system_failure_level";
       msg.value = ballastState.system_failure_level;
       msg.description = "Store DTR as system failure level: " + String(ballastState.system_failure_level);
@@ -916,11 +873,11 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
       break;
 
     case DALI_QUERY_VERSION_NUMBER:
-      sendBackwardFrame(0x01); // Version 1.0
+      sendBackwardFrame(0x02); // DALI-2 Version 2.0
       msg.is_query_response = true;
       msg.command_type = "query_version_number";
-      msg.response_byte = 0x01;
-      msg.description = "Query version: 1.0";
+      msg.response_byte = 0x02;
+      msg.description = "Query version: 2.0 (DALI-2)";
       addRecentMessage(msg);
       publishBallastCommand(msg);
       incrementTxCount();
@@ -994,189 +951,9 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
       incrementTxCount();
       break;
 
-    // Commissioning commands
-    case DALI_INITIALISE:
-      if (ballastState.address_mode_auto) {
-        ballastState.initialise_state = (data_byte == 0x00 || data_byte == 0xFF);
-        ballastState.random_address = random(0xFFFFFF);
-        msg.command_type = "initialise";
-        msg.description = "Initialise (auto mode)";
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-#ifdef DEBUG_SERIAL
-        Serial.printf("[Commissioning] INITIALISE - Random: 0x%06X\n", ballastState.random_address);
-#endif
-      }
-      break;
-
-    case DALI_RANDOMISE:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        ballastState.random_address = random(0xFFFFFF);
-        ballastState.withdraw_state = false;
-        msg.command_type = "randomise";
-        msg.description = "Randomise address";
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-#ifdef DEBUG_SERIAL
-        Serial.printf("[Commissioning] RANDOMISE - New random: 0x%06X\n", ballastState.random_address);
-#endif
-      }
-      break;
-
-    case DALI_SEARCHADDRH:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        ballastState.search_address = (ballastState.search_address & 0x0000FFFF) | ((uint32_t)data_byte << 16);
-        msg.command_type = "searchaddrh";
-        msg.description = "Search address H: 0x" + String(data_byte, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-      }
-      break;
-
-    case DALI_SEARCHADDRM:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        ballastState.search_address = (ballastState.search_address & 0x00FF00FF) | ((uint32_t)data_byte << 8);
-        msg.command_type = "searchaddrm";
-        msg.description = "Search address M: 0x" + String(data_byte, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-      }
-      break;
-
-    case DALI_SEARCHADDRL:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        ballastState.search_address = (ballastState.search_address & 0x00FFFF00) | data_byte;
-        msg.command_type = "searchaddrl";
-        msg.description = "Search address L: 0x" + String(data_byte, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-#ifdef DEBUG_SERIAL
-        Serial.printf("[Commissioning] Search address set to: 0x%06X\n", ballastState.search_address);
-#endif
-      }
-      break;
-
-    case DALI_COMPARE:
-      if (ballastState.address_mode_auto && ballastState.initialise_state && !ballastState.withdraw_state) {
-        if (ballastState.random_address <= ballastState.search_address) {
-          sendBackwardFrame(0xFF);
-          msg.is_query_response = true;
-          msg.response_byte = 0xFF;
-          incrementTxCount();
-#ifdef DEBUG_SERIAL
-          Serial.printf("[Commissioning] COMPARE - Match (0x%06X <= 0x%06X)\n",
-                       ballastState.random_address, ballastState.search_address);
-#endif
-        }
-        msg.command_type = "compare";
-        msg.description = "Compare addresses";
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-      }
-      break;
-
-    case DALI_WITHDRAW:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        ballastState.withdraw_state = true;
-        msg.command_type = "withdraw";
-        msg.description = "Withdraw from search";
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-#ifdef DEBUG_SERIAL
-        Serial.println("[Commissioning] WITHDRAW - Removed from search");
-#endif
-      }
-      break;
-
-    case DALI_PROGRAM_SHORT_ADDRESS:
-      if (ballastState.address_mode_auto && ballastState.initialise_state && !ballastState.withdraw_state) {
-        if (ballastState.random_address == ballastState.search_address) {
-          uint8_t new_addr = (data_byte >> 1) & 0x3F;
-          ballastState.short_address = new_addr;
-          saveBallastConfig();
-          msg.command_type = "program_short_address";
-          msg.value = new_addr;
-          msg.description = "Programmed address: " + String(new_addr);
-          addRecentMessage(msg);
-          publishBallastCommand(msg);
-          publishBallastConfig();
-#ifdef DEBUG_SERIAL
-          Serial.printf("[Commissioning] PROGRAM_SHORT_ADDRESS - Address set to: %d\n", new_addr);
-#endif
-        }
-      }
-      break;
-
-    case DALI_VERIFY_SHORT_ADDRESS:
-      if (ballastState.address_mode_auto) {
-        uint8_t verify_addr = (data_byte >> 1) & 0x3F;
-        if (verify_addr == ballastState.short_address) {
-          sendBackwardFrame(0xFF);
-          msg.is_query_response = true;
-          msg.response_byte = 0xFF;
-          incrementTxCount();
-        }
-        msg.command_type = "verify_short_address";
-        msg.description = "Verify address: " + String(verify_addr);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-      }
-      break;
-
-    case DALI_QUERY_SHORT_ADDRESS:
-      if (ballastState.address_mode_auto && ballastState.initialise_state && !ballastState.withdraw_state) {
-        if (ballastState.random_address == ballastState.search_address) {
-          sendBackwardFrame((ballastState.short_address << 1) | 0x01);
-          msg.is_query_response = true;
-          msg.response_byte = (ballastState.short_address << 1) | 0x01;
-          msg.value = ballastState.short_address;
-          incrementTxCount();
-        }
-        msg.command_type = "query_short_address";
-        msg.description = "Query short address: " + String(ballastState.short_address);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-      }
-      break;
-
-    case DALI_QUERY_RANDOM_ADDRESS_H:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        sendBackwardFrame((ballastState.random_address >> 16) & 0xFF);
-        msg.is_query_response = true;
-        msg.command_type = "query_random_address_h";
-        msg.response_byte = (ballastState.random_address >> 16) & 0xFF;
-        msg.description = "Query random address H: 0x" + String((ballastState.random_address >> 16) & 0xFF, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-        incrementTxCount();
-      }
-      break;
-
-    case DALI_QUERY_RANDOM_ADDRESS_M:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        sendBackwardFrame((ballastState.random_address >> 8) & 0xFF);
-        msg.is_query_response = true;
-        msg.command_type = "query_random_address_m";
-        msg.response_byte = (ballastState.random_address >> 8) & 0xFF;
-        msg.description = "Query random address M: 0x" + String((ballastState.random_address >> 8) & 0xFF, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-        incrementTxCount();
-      }
-      break;
-
-    case DALI_QUERY_RANDOM_ADDRESS_L:
-      if (ballastState.address_mode_auto && ballastState.initialise_state) {
-        sendBackwardFrame(ballastState.random_address & 0xFF);
-        msg.is_query_response = true;
-        msg.command_type = "query_random_address_l";
-        msg.response_byte = ballastState.random_address & 0xFF;
-        msg.description = "Query random address L: 0x" + String(ballastState.random_address & 0xFF, HEX);
-        addRecentMessage(msg);
-        publishBallastCommand(msg);
-        incrementTxCount();
-      }
-      break;
+    // NOTE: Commissioning commands (INITIALISE, RANDOMISE, COMPARE, WITHDRAW, etc.)
+    // are handled in processSpecialCommand() via isSpecialCommand() check.
+    // They use special address bytes (0xA1-0xDF) and won't reach this switch.
 
     default:
       // Check for scene commands (0x10-0x1F)
@@ -1204,6 +981,330 @@ void processCommand(uint8_t addr_byte, uint8_t data_byte) {
         publishBallastCommand(msg);
         incrementTxCount();
       }
+      // Check for DT8 color commands (0xE0-0xFC) - only if device type 8 is enabled
+      else if (data_byte >= 0xE0 && data_byte <= 0xFC && ballastState.enabled_device_type == 8) {
+        processDT8Command(data_byte, msg);
+      }
+      break;
+  }
+}
+
+// Process DT8 Color Commands (IEC 62386-209)
+void processDT8Command(uint8_t cmd, BallastMessage& msg) {
+#ifdef DEBUG_SERIAL
+  Serial.printf("[DT8] Processing color command: 0x%02X (DTR0=%d, DTR1=%d, DTR2=%d)\n", 
+                cmd, ballastState.dtr0, ballastState.dtr1, ballastState.dtr2);
+#endif
+
+  switch (cmd) {
+    case DALI_DT8_SET_TEMP_X_COORD:
+      // Set temporary X coordinate (DTR0=LSB, DTR1=MSB)
+      ballastState.temp_color_x = (ballastState.dtr1 << 8) | ballastState.dtr0;
+      msg.command_type = "dt8_set_temp_x";
+      msg.description = "DT8: Set temp X=" + String(ballastState.temp_color_x);
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Temp X coordinate: %d\n", ballastState.temp_color_x);
+#endif
+      break;
+
+    case DALI_DT8_SET_TEMP_Y_COORD:
+      // Set temporary Y coordinate (DTR0=LSB, DTR1=MSB)
+      ballastState.temp_color_y = (ballastState.dtr1 << 8) | ballastState.dtr0;
+      msg.command_type = "dt8_set_temp_y";
+      msg.description = "DT8: Set temp Y=" + String(ballastState.temp_color_y);
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Temp Y coordinate: %d\n", ballastState.temp_color_y);
+#endif
+      break;
+
+    case DALI_DT8_ACTIVATE:
+      // Apply all temporary color values
+      ballastState.color_x = ballastState.temp_color_x;
+      ballastState.color_y = ballastState.temp_color_y;
+      ballastState.color_temp_mirek = ballastState.temp_color_temp;
+      ballastState.color_r = ballastState.temp_color_r;
+      ballastState.color_g = ballastState.temp_color_g;
+      ballastState.color_b = ballastState.temp_color_b;
+      ballastState.color_w = ballastState.temp_color_w;
+      ballastState.color_a = ballastState.temp_color_a;
+      ballastState.color_f = ballastState.temp_color_f;
+      msg.command_type = "dt8_activate";
+      msg.description = "DT8: Activate colors (R=" + String(ballastState.color_r) + 
+                        " G=" + String(ballastState.color_g) + 
+                        " B=" + String(ballastState.color_b) + 
+                        " W=" + String(ballastState.color_w) + ")";
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+      publishBallastState();
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] ACTIVATE - RGB(%d,%d,%d) W=%d Tc=%d mirek\n", 
+                    ballastState.color_r, ballastState.color_g, ballastState.color_b,
+                    ballastState.color_w, ballastState.color_temp_mirek);
+#endif
+      break;
+
+    case DALI_DT8_SET_TEMP_COLOUR_TEMP:
+      // Set temporary color temperature (DTR0=LSB, DTR1=MSB in mirek)
+      ballastState.temp_color_temp = (ballastState.dtr1 << 8) | ballastState.dtr0;
+      {
+        uint16_t kelvin = (ballastState.temp_color_temp > 0) ? (1000000 / ballastState.temp_color_temp) : 0;
+        msg.command_type = "dt8_set_temp_colour_temp";
+        msg.description = "DT8: Set temp color temp=" + String(ballastState.temp_color_temp) + 
+                          " mirek (" + String(kelvin) + "K)";
+      }
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Temp color temp: %d mirek\n", ballastState.temp_color_temp);
+#endif
+      break;
+
+    case DALI_DT8_COLOUR_TEMP_STEP_COOLER:
+      // Step color temperature cooler (lower mirek = higher Kelvin = cooler)
+      if (ballastState.temp_color_temp > ballastState.color_temp_tc_coolest) {
+        ballastState.temp_color_temp--;
+      }
+      msg.command_type = "dt8_colour_temp_step_cooler";
+      msg.description = "DT8: Step cooler, temp=" + String(ballastState.temp_color_temp) + " mirek";
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+      break;
+
+    case DALI_DT8_COLOUR_TEMP_STEP_WARMER:
+      // Step color temperature warmer (higher mirek = lower Kelvin = warmer)
+      if (ballastState.temp_color_temp < ballastState.color_temp_tc_warmest) {
+        ballastState.temp_color_temp++;
+      }
+      msg.command_type = "dt8_colour_temp_step_warmer";
+      msg.description = "DT8: Step warmer, temp=" + String(ballastState.temp_color_temp) + " mirek";
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+      break;
+
+    case DALI_DT8_SET_TEMP_RGB:
+      // Set temporary RGB (DTR0=R, DTR1=G, DTR2=B)
+      ballastState.temp_color_r = ballastState.dtr0;
+      ballastState.temp_color_g = ballastState.dtr1;
+      ballastState.temp_color_b = ballastState.dtr2;
+      ballastState.active_color_type = 3;  // RGBWAF mode
+      msg.command_type = "dt8_set_temp_rgb";
+      msg.description = "DT8: Set temp RGB(" + String(ballastState.temp_color_r) + "," + 
+                        String(ballastState.temp_color_g) + "," + 
+                        String(ballastState.temp_color_b) + ")";
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Temp RGB: R=%d G=%d B=%d\n", 
+                    ballastState.temp_color_r, ballastState.temp_color_g, ballastState.temp_color_b);
+#endif
+      break;
+
+    case DALI_DT8_SET_TEMP_WAF:
+      // Set temporary WAF (DTR0=W, DTR1=A, DTR2=F)
+      ballastState.temp_color_w = ballastState.dtr0;
+      ballastState.temp_color_a = ballastState.dtr1;
+      ballastState.temp_color_f = ballastState.dtr2;
+      msg.command_type = "dt8_set_temp_waf";
+      msg.description = "DT8: Set temp WAF(W=" + String(ballastState.temp_color_w) + ",A=" + 
+                        String(ballastState.temp_color_a) + ",F=" + 
+                        String(ballastState.temp_color_f) + ")";
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Temp WAF: W=%d A=%d F=%d\n", 
+                    ballastState.temp_color_w, ballastState.temp_color_a, ballastState.temp_color_f);
+#endif
+      break;
+
+    case DALI_DT8_SET_TEMP_RGBWAF_CTRL:
+      // Set RGBWAF control flags (DTR0=control)
+      ballastState.rgbwaf_control = ballastState.dtr0;
+      msg.command_type = "dt8_set_temp_rgbwaf_ctrl";
+      msg.description = "DT8: Set RGBWAF control=0x" + String(ballastState.rgbwaf_control, HEX);
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] RGBWAF control: 0x%02X\n", ballastState.rgbwaf_control);
+#endif
+      break;
+
+    case DALI_DT8_QUERY_GEAR_FEATURES:
+      // Query gear features/status - respond with capabilities
+      {
+        uint8_t features = 0x00;  // No auto-calibration support
+        sendBackwardFrame(features);
+        msg.is_query_response = true;
+        msg.command_type = "dt8_query_gear_features";
+        msg.response_byte = features;
+        msg.description = "DT8: Query gear features=0x" + String(features, HEX);
+        addRecentMessage(msg);
+        publishBallastCommand(msg);
+        incrementTxCount();
+      }
+      break;
+
+    case DALI_DT8_QUERY_COLOUR_STATUS:
+      // Query colour status
+      {
+        uint8_t status = ballastState.color_status;
+        // Set active color type bits
+        if (ballastState.active_color_type == 0) status |= 0x10;      // xy active
+        else if (ballastState.active_color_type == 1) status |= 0x20; // Tc active
+        else if (ballastState.active_color_type == 2) status |= 0x40; // primaryN active
+        else if (ballastState.active_color_type == 3) status |= 0x80; // RGBWAF active
+        sendBackwardFrame(status);
+        msg.is_query_response = true;
+        msg.command_type = "dt8_query_colour_status";
+        msg.response_byte = status;
+        msg.description = "DT8: Query colour status=0x" + String(status, HEX);
+        addRecentMessage(msg);
+        publishBallastCommand(msg);
+        incrementTxCount();
+      }
+      break;
+
+    case DALI_DT8_QUERY_COLOUR_TYPE_FEATURES:
+      // Query colour type features - what color modes are supported
+      {
+        // Bits: 0=xy, 1=Tc, 2-4=primaryN count, 5-7=RGBWAF channels
+        // We support: xy, Tc, and RGBWAF (4 channels for RGBW)
+        uint8_t features = DALI_DT8_FEATURE_XY_CAPABLE | DALI_DT8_FEATURE_TC_CAPABLE;
+        features |= (4 << 5);  // 4 RGBWAF channels (R, G, B, W)
+        sendBackwardFrame(features);
+        msg.is_query_response = true;
+        msg.command_type = "dt8_query_colour_type_features";
+        msg.response_byte = features;
+        msg.description = "DT8: Query colour type features=0x" + String(features, HEX);
+        addRecentMessage(msg);
+        publishBallastCommand(msg);
+        incrementTxCount();
+#ifdef DEBUG_SERIAL
+        Serial.printf("[DT8] Colour type features: 0x%02X (xy=%d, Tc=%d, RGBWAF=%d ch)\n", 
+                      features, (features & 0x01), (features & 0x02) >> 1, (features >> 5) & 0x07);
+#endif
+      }
+      break;
+
+    case DALI_DT8_QUERY_COLOUR_VALUE:
+      // Query colour value - DTR0 selects which value to return
+      {
+        uint8_t response = 0;
+        String value_name = "unknown";
+        
+        switch (ballastState.dtr0) {
+          case DALI_DT8_QCV_X_COORD:
+            response = ballastState.color_x >> 8;  // Return MSB
+            value_name = "X coord MSB";
+            break;
+          case DALI_DT8_QCV_Y_COORD:
+            response = ballastState.color_y >> 8;  // Return MSB
+            value_name = "Y coord MSB";
+            break;
+          case DALI_DT8_QCV_COLOUR_TEMP:
+            response = ballastState.color_temp_mirek >> 8;  // Return MSB
+            value_name = "Colour temp MSB";
+            break;
+          case DALI_DT8_QCV_RED_DIM_LEVEL:
+            response = ballastState.color_r;
+            value_name = "Red";
+            break;
+          case DALI_DT8_QCV_GREEN_DIM_LEVEL:
+            response = ballastState.color_g;
+            value_name = "Green";
+            break;
+          case DALI_DT8_QCV_BLUE_DIM_LEVEL:
+            response = ballastState.color_b;
+            value_name = "Blue";
+            break;
+          case DALI_DT8_QCV_WHITE_DIM_LEVEL:
+            response = ballastState.color_w;
+            value_name = "White";
+            break;
+          case DALI_DT8_QCV_AMBER_DIM_LEVEL:
+            response = ballastState.color_a;
+            value_name = "Amber";
+            break;
+          case DALI_DT8_QCV_FREECOLOUR_DIM_LEVEL:
+            response = ballastState.color_f;
+            value_name = "Freecolour";
+            break;
+          case DALI_DT8_QCV_RGBWAF_CONTROL:
+            response = ballastState.rgbwaf_control;
+            value_name = "RGBWAF control";
+            break;
+          case DALI_DT8_QCV_TC_COOLEST:
+            response = ballastState.color_temp_tc_coolest >> 8;
+            value_name = "Tc coolest MSB";
+            break;
+          case DALI_DT8_QCV_TC_WARMEST:
+            response = ballastState.color_temp_tc_warmest >> 8;
+            value_name = "Tc warmest MSB";
+            break;
+          case DALI_DT8_QCV_TEMP_RED:
+            response = ballastState.temp_color_r;
+            value_name = "Temp Red";
+            break;
+          case DALI_DT8_QCV_TEMP_GREEN:
+            response = ballastState.temp_color_g;
+            value_name = "Temp Green";
+            break;
+          case DALI_DT8_QCV_TEMP_BLUE:
+            response = ballastState.temp_color_b;
+            value_name = "Temp Blue";
+            break;
+          case DALI_DT8_QCV_TEMP_WHITE:
+            response = ballastState.temp_color_w;
+            value_name = "Temp White";
+            break;
+          case DALI_DT8_QCV_TEMP_COLOUR_TYPE:
+            response = ballastState.active_color_type;
+            value_name = "Colour type";
+            break;
+          default:
+            response = 0xFF;  // MASK for unknown
+            value_name = "Unknown(" + String(ballastState.dtr0) + ")";
+            break;
+        }
+        
+        sendBackwardFrame(response);
+        msg.is_query_response = true;
+        msg.command_type = "dt8_query_colour_value";
+        msg.response_byte = response;
+        msg.description = "DT8: Query " + value_name + "=" + String(response);
+        addRecentMessage(msg);
+        publishBallastCommand(msg);
+        incrementTxCount();
+#ifdef DEBUG_SERIAL
+        Serial.printf("[DT8] Query colour value (DTR0=%d): %s = %d\n", 
+                      ballastState.dtr0, value_name.c_str(), response);
+#endif
+      }
+      break;
+
+    case DALI_DT8_QUERY_RGBWAF_CONTROL:
+      // Query RGBWAF control
+      sendBackwardFrame(ballastState.rgbwaf_control);
+      msg.is_query_response = true;
+      msg.command_type = "dt8_query_rgbwaf_control";
+      msg.response_byte = ballastState.rgbwaf_control;
+      msg.description = "DT8: Query RGBWAF control=0x" + String(ballastState.rgbwaf_control, HEX);
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
+      incrementTxCount();
+      break;
+
+    default:
+#ifdef DEBUG_SERIAL
+      Serial.printf("[DT8] Unknown command: 0x%02X\n", cmd);
+#endif
+      msg.command_type = "dt8_unknown";
+      msg.description = "DT8: Unknown cmd 0x" + String(cmd, HEX);
+      addRecentMessage(msg);
+      publishBallastCommand(msg);
       break;
   }
 }
@@ -1282,51 +1383,54 @@ void updateLED() {
       r = g = b = brightness;
       break;
 
-    case DT8_RGB:
-      // RGB mode: Use RGB values scaled by brightness
-      r = (ballastState.color_r * brightness) / 255;
-      g = (ballastState.color_g * brightness) / 255;
-      b = (ballastState.color_b * brightness) / 255;
-      break;
+    case DT8_COLOUR:
+      // DT8 Colour mode - behavior depends on active_color_type
+      switch (ballastState.active_color_type) {
+        case DT8_MODE_TC:
+          // Color Temperature mode: Convert mirek to RGB
+          {
+            uint16_t kelvin = (ballastState.color_temp_mirek > 0) ? (1000000 / ballastState.color_temp_mirek) : 4000;
 
-    case DT8_RGBW:
-      // RGBW mode: Use RGB values scaled by brightness
-      // Note: WS2812 doesn't have separate W channel, so we blend it
-      {
-        uint8_t w = (ballastState.color_w * brightness) / 255;
-        r = min(255, (ballastState.color_r * brightness) / 255 + w);
-        g = min(255, (ballastState.color_g * brightness) / 255 + w);
-        b = min(255, (ballastState.color_b * brightness) / 255 + w);
-      }
-      break;
+            // Simplified color temperature to RGB conversion
+            if (kelvin <= 3000) {
+              // Warm white (orange-ish)
+              r = 255;
+              g = map(kelvin, 2700, 3000, 180, 220);
+              b = map(kelvin, 2700, 3000, 100, 150);
+            } else if (kelvin <= 4500) {
+              // Neutral white
+              r = map(kelvin, 3000, 4500, 255, 245);
+              g = map(kelvin, 3000, 4500, 220, 240);
+              b = map(kelvin, 3000, 4500, 150, 220);
+            } else {
+              // Cool white (blue-ish)
+              r = map(kelvin, 4500, 6500, 245, 220);
+              g = map(kelvin, 4500, 6500, 240, 235);
+              b = 255;
+            }
 
-    case DT8_COLOR_TEMP:
-      // Color Temperature mode: Convert Kelvin to RGB
-      {
-        uint16_t kelvin = ballastState.color_temp_kelvin;
+            // Scale by brightness
+            r = (r * brightness) / 255;
+            g = (g * brightness) / 255;
+            b = (b * brightness) / 255;
+          }
+          break;
 
-        // Simplified color temperature to RGB conversion
-        if (kelvin <= 3000) {
-          // Warm white (orange-ish)
-          r = 255;
-          g = map(kelvin, 2700, 3000, 180, 220);
-          b = map(kelvin, 2700, 3000, 100, 150);
-        } else if (kelvin <= 4500) {
-          // Neutral white
-          r = map(kelvin, 3000, 4500, 255, 245);
-          g = map(kelvin, 3000, 4500, 220, 240);
-          b = map(kelvin, 3000, 4500, 150, 220);
-        } else {
-          // Cool white (blue-ish)
-          r = map(kelvin, 4500, 6500, 245, 220);
-          g = map(kelvin, 4500, 6500, 240, 235);
-          b = 255;
-        }
-
-        // Scale by brightness
-        r = (r * brightness) / 255;
-        g = (g * brightness) / 255;
-        b = (b * brightness) / 255;
+        case DT8_MODE_RGBWAF:
+        default:
+          // RGBWAF mode: Use RGB values scaled by brightness
+          // If W channel is set, blend it in (WS2812 doesn't have separate W)
+          if (ballastState.color_w > 0) {
+            uint8_t w = (ballastState.color_w * brightness) / 255;
+            r = min(255, (ballastState.color_r * brightness) / 255 + w);
+            g = min(255, (ballastState.color_g * brightness) / 255 + w);
+            b = min(255, (ballastState.color_b * brightness) / 255 + w);
+          } else {
+            r = (ballastState.color_r * brightness) / 255;
+            g = (ballastState.color_g * brightness) / 255;
+            b = (ballastState.color_b * brightness) / 255;
+          }
+          break;
       }
       break;
 
@@ -1353,7 +1457,24 @@ void updateLED() {
 }
 
 void sendBackwardFrame(uint8_t data) {
-  enqueueResponse(data);
+  // DALI requires backward frame within 7-22ms of forward frame
+  // Send immediately, don't queue
+  updateBusActivity();
+  
+  uint8_t response[1] = {data};
+  int result = dali.tx_wait(response, 8, QUERY_RESPONSE_TIMEOUT_MS);
+  
+  if (result >= 0) {
+    incrementTxCount();
+#ifdef DEBUG_SERIAL
+    Serial.printf("[Ballast] Sent response: 0x%02X\n", data);
+#endif
+  } else {
+    incrementErrorCount();
+#ifdef DEBUG_SERIAL
+    Serial.printf("[Ballast] Response transmission failed: 0x%02X\n", data);
+#endif
+  }
 }
 
 uint8_t getStatusByte() {
@@ -1384,7 +1505,7 @@ void recallScene(uint8_t scene) {
 void storeScene(uint8_t scene, uint8_t level) {
   if (scene > 15) return;
   ballastState.scene_levels[scene] = level;
-  saveBallastConfig();
+  // Note: Not saving to flash - save manually via web UI
 }
 
 uint8_t queryScene(uint8_t scene) {

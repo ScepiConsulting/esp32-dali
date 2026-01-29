@@ -63,6 +63,7 @@ void webInit() {
   server.on("/api/status", handleAPIStatus);
   server.on("/api/diagnostics", handleAPIDiagnostics);
   server.on("/api/recent", handleAPIRecent);
+  server.on("/api/passive_devices", handleAPIPassiveDevices);
   server.on("/api/reboot", HTTP_POST, []() {
     server.send(200, "text/plain", "Rebooting...");
     delay(100);
@@ -502,6 +503,12 @@ void handleDALIControl() {
   html += "<div id=\"scan-results\" style=\"margin-top:16px;\"></div>";
   html += "</div>";
 
+  html += "<div class=\"card\"><h2>Observed Devices</h2>";
+  html += "<p class=\"subtitle\">Devices seen on the bus (passive discovery, no persistence)</p>";
+  html += "<button onclick=\"refreshPassiveDevices()\">Refresh</button>";
+  html += "<div id=\"passive-devices\" style=\"margin-top:16px;\"><p style=\"color:var(--text-secondary);\">Click Refresh to load...</p></div>";
+  html += "</div>";
+
   html += "<div class=\"card\"><h2>Device Commissioning</h2>";
   html += "<p class=\"subtitle\">Automatically assign addresses to unaddressed devices</p>";
   html += "<div style=\"margin-bottom:16px;\">";
@@ -558,6 +565,23 @@ void handleDALIControl() {
   html += "d.devices.forEach(dev=>html+='<li>Address '+dev.address+' - '+dev.status+'</li>');";
   html += "html+='</ul>';document.getElementById('scan-results').innerHTML=html;";
   html += "}).catch(e=>document.getElementById('scan-results').innerHTML='<p>Error: '+e+'</p>');";
+  html += "}";
+  html += "function refreshPassiveDevices(){";
+  html += "document.getElementById('passive-devices').innerHTML='<p>Loading...</p>';";
+  html += "fetch('/api/passive_devices').then(r=>r.json()).then(d=>{";
+  html += "if(d.count===0){document.getElementById('passive-devices').innerHTML='<p style=\"color:var(--text-secondary);\">No devices observed yet. Traffic on the bus will be learned automatically.</p>';return;}";
+  html += "let html='<p>'+d.count+' device(s) observed:</p>';";
+  html += "html+='<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;\">';";
+  html += "d.devices.forEach(dev=>{";
+  html += "let age=dev.last_seen<60?dev.last_seen+'s':(dev.last_seen<3600?Math.floor(dev.last_seen/60)+'m':Math.floor(dev.last_seen/3600)+'h');";
+  html += "let lvl=dev.level>=0?dev.level:'?';";
+  html += "html+='<div style=\"background:var(--bg-secondary);padding:10px;border-radius:6px;text-align:center;\">';";
+  html += "html+='<div style=\"font-weight:600;font-size:18px;\">'+dev.address+'</div>';";
+  html += "html+='<div style=\"font-size:12px;color:var(--text-secondary);\">Level: '+lvl+'</div>';";
+  html += "html+='<div style=\"font-size:11px;color:var(--text-secondary);\">'+age+' ago</div>';";
+  html += "html+='</div>';});";
+  html += "html+='</div>';document.getElementById('passive-devices').innerHTML=html;";
+  html += "}).catch(e=>document.getElementById('passive-devices').innerHTML='<p>Error: '+e+'</p>');";
   html += "}";
   html += "let commissionInterval=null;";
   html += "function startCommissioning(){";
@@ -1017,4 +1041,27 @@ String buildHTMLFooter() {
   html += "window.onclick=function(e){const modal=document.getElementById('modal');if(e.target===modal)closeModal();};";
   html += "</script></body></html>";
   return html;
+}
+
+void handleAPIPassiveDevices() {
+  unsigned long now = millis();
+  String json = "{\"devices\":[";
+  bool first = true;
+  
+  for (int i = 0; i < DALI_MAX_ADDRESSES; i++) {
+    if (passiveDevices[i].last_seen > 0) {
+      if (!first) json += ",";
+      first = false;
+      
+      unsigned long age_sec = (now - passiveDevices[i].last_seen) / 1000;
+      json += "{\"address\":" + String(i);
+      json += ",\"last_seen\":" + String(age_sec);
+      json += ",\"level\":" + String(passiveDevices[i].last_level == 255 ? -1 : (int)passiveDevices[i].last_level);
+      json += ",\"device_type\":" + String(passiveDevices[i].device_type == 255 ? -1 : (int)passiveDevices[i].device_type);
+      json += "}";
+    }
+  }
+  
+  json += "],\"count\":" + String(getPassiveDeviceCount()) + "}";
+  server.send(200, "application/json", json);
 }

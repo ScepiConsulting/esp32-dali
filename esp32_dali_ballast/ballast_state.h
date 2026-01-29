@@ -3,19 +3,33 @@
 
 #include <Arduino.h>
 
-// Device Type enumeration
+// Device Type enumeration (IEC 62386 part numbers)
 enum DeviceType {
-    DT0_NORMAL = 0,           // Normal - IEC 62386-102
+    DT0_NORMAL = 0,           // Normal fluorescent - IEC 62386-102
     DT6_LED = 6,              // LED - IEC 62386-207
-    DT8_RGB = 8,              // RGB - IEC 62386-209
-    DT8_RGBW = 9,             // RGBW - IEC 62386-209
-    DT8_COLOR_TEMP = 10       // Colour Temperature - IEC 62386-209
+    DT8_COLOUR = 8            // Colour control (RGB, RGBW, Tc) - IEC 62386-209
+};
+
+// DT8 Colour Type (sub-modes within Device Type 8)
+enum DT8ColourType {
+    DT8_MODE_XY = 0,          // CIE xy chromaticity coordinates
+    DT8_MODE_TC = 1,          // Colour temperature Tc
+    DT8_MODE_PRIMARY_N = 2,   // Primary N dimming
+    DT8_MODE_RGBWAF = 3       // RGBWAF channels (RGB, RGBW, etc.)
+};
+
+// How the address was assigned
+enum AddressSource {
+    ADDR_UNASSIGNED = 0,          // No address assigned yet (255)
+    ADDR_MANUAL = 1,              // Manually set via web interface
+    ADDR_COMMISSIONED = 2         // Assigned via DALI commissioning
 };
 
 struct BallastState {
     uint8_t short_address;        // 0-63 (configurable), 255 = unaddressed
     uint8_t device_type;          // Device type (DT0, DT6, DT8)
     bool address_mode_auto;       // true = automatic commissioning, false = manual
+    uint8_t address_source;       // How address was assigned (AddressSource enum)
 
     // Standard brightness control
     uint8_t actual_level;         // Current brightness 0-254
@@ -35,16 +49,41 @@ struct BallastState {
     uint8_t channel_warm;         // Warm white channel (0-254)
     uint8_t channel_cool;         // Cool white channel (0-254)
 
-    // DT8 RGB/RGBW color control
-    uint8_t color_r;              // Red channel (0-255)
-    uint8_t color_g;              // Green channel (0-255)
-    uint8_t color_b;              // Blue channel (0-255)
-    uint8_t color_w;              // White channel (0-255) - for RGBW
-    uint8_t color_a;              // Amber channel (0-255) - optional
-    uint8_t color_f;              // Free color channel (0-255) - optional
+    // DT8 RGB/RGBW color control - Active values
+    uint8_t color_r;              // Red channel (0-254)
+    uint8_t color_g;              // Green channel (0-254)
+    uint8_t color_b;              // Blue channel (0-254)
+    uint8_t color_w;              // White channel (0-254) - for RGBW
+    uint8_t color_a;              // Amber channel (0-254) - optional
+    uint8_t color_f;              // Free color channel (0-254) - optional
+
+    // DT8 RGB/RGBW color control - Temporary values (set before Activate)
+    uint8_t temp_color_r;         // Temporary Red channel
+    uint8_t temp_color_g;         // Temporary Green channel
+    uint8_t temp_color_b;         // Temporary Blue channel
+    uint8_t temp_color_w;         // Temporary White channel
+    uint8_t temp_color_a;         // Temporary Amber channel
+    uint8_t temp_color_f;         // Temporary Free color channel
+    uint8_t rgbwaf_control;       // RGBWAF control flags (which channels are active)
 
     // DT8 Color Temperature control
-    uint16_t color_temp_kelvin;   // Color temperature in Kelvin (2700-6500 typical)
+    uint16_t color_temp_mirek;    // Color temperature in mirek (153-370 typical, = 1000000/Kelvin)
+    uint16_t temp_color_temp;     // Temporary color temperature (before Activate)
+    uint16_t color_temp_tc_coolest;    // Coolest color temp limit (mirek)
+    uint16_t color_temp_tc_warmest;    // Warmest color temp limit (mirek)
+    uint16_t color_temp_physical_coolest; // Physical coolest limit
+    uint16_t color_temp_physical_warmest; // Physical warmest limit
+
+    // DT8 XY Chromaticity coordinates (CIE 1931)
+    uint16_t color_x;             // X coordinate (0-65535 maps to 0.0-1.0)
+    uint16_t color_y;             // Y coordinate (0-65535 maps to 0.0-1.0)
+    uint16_t temp_color_x;        // Temporary X coordinate
+    uint16_t temp_color_y;        // Temporary Y coordinate
+
+    // DT8 Color type and status
+    uint8_t active_color_type;    // 0=xy, 1=Tc, 2=primaryN, 3=RGBWAF
+    uint8_t color_status;         // Color status flags
+    uint8_t color_type_features;  // Supported color types bitmap
 
     // Commissioning state
     uint32_t random_address;      // Random address for commissioning
@@ -60,6 +99,7 @@ struct BallastState {
     bool limit_error;             // Limit error status
     bool fade_running;            // Fade in progress
     bool reset_state;             // Reset state flag
+    bool quiescent_mode;          // DALI-2 quiescent mode (stop sending events)
     unsigned long last_command_time; // For fade timing
 };
 

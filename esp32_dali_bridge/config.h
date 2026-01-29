@@ -23,6 +23,9 @@
 
 #define WDT_TIMEOUT 30
 
+// Passive device discovery - minimal RAM usage
+#define DALI_MAX_ADDRESSES 64
+
 // MQTT Monitor Filter Configuration
 struct MonitorFilter {
     bool enable_dapc;           // Direct Arc Power Control (brightness)

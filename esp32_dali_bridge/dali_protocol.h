@@ -27,7 +27,7 @@
 #define DALI_QUERY_LAMP_FAILURE 0x92
 #define DALI_QUERY_LAMP_POWER_ON 0x94
 #define DALI_QUERY_LIMIT_ERROR 0x95
-#define DALI_QUERY_RESET_STATE 0x95
+#define DALI_QUERY_RESET_STATE 0x93
 #define DALI_QUERY_MISSING_SHORT_ADDRESS 0x96
 #define DALI_QUERY_VERSION_NUMBER 0x97
 #define DALI_QUERY_CONTENT_DTR0 0x98
@@ -44,7 +44,7 @@
 #define DALI_QUERY_FADE_TIME_RATE 0xA5
 #define DALI_QUERY_SCENE_LEVEL 0xB0
 
-#define DALI_DATA_TRANSFER_REGISTER 0xA3
+#define DALI_SET_DTR0 0xA3
 #define DALI_INITIALISE 0xA5
 #define DALI_RANDOMISE 0xA7
 #define DALI_COMPARE 0xA9
@@ -141,6 +141,15 @@ struct CommissioningProgress {
     uint32_t current_random_address;
     String status_message;
     int progress_percent;
+};
+
+// Passive device discovery - minimal RAM (4 bytes per address = 256 bytes total)
+// Learned from bus traffic without active scanning
+struct PassiveDevice {
+    uint32_t last_seen;       // millis() timestamp (0 = never seen)
+    uint8_t last_level;       // Last known level (0-254, 255 = unknown)
+    uint8_t device_type;      // Device type if known (255 = unknown)
+    uint8_t flags;            // Bit flags: 0=responded_to_query, 1=lamp_failure, 2-7=reserved
 };
 
 #endif

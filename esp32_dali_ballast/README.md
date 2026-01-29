@@ -5,10 +5,10 @@ A virtual DALI ballast emulator that appears on the bus as a controllable DALI d
 ## 🌟 Features
 
 - **DALI Ballast Emulation** - Appears as a standard DALI slave device on the bus
-- **Query Response** - Responds to queries within 22ms (status, level, etc.)
-- **Response Queueing** - Intelligent response queue with bus arbitration
-- **Bus Arbitration** - Waits for bus idle before transmitting responses
+- **Query Response** - Immediate responses within DALI timing (2.91-22ms)
+- **DALI-2 Compliant** - Proper backward frame timing, no retry mechanism
 - **Command Processing** - Handles all standard DALI commands (set level, fade, scenes)
+- **DT8 Color Support** - RGB, RGBW, and Color Temperature control
 - **Automatic Commissioning** - Supports DALI commissioning protocol
 - **Configurable Address** - Set unique short address (0-63) or auto-assign
 - **MQTT State Publishing** - Publishes state changes and received commands
@@ -188,13 +188,11 @@ Edit `esp32_dali_ballast/config.h` to customize:
 #define AP_SSID "ESP32-DALI-Ballast"
 #define AP_PASSWORD "daliconfig"
 
-// Query response timeout (critical!)
+// Query response timeout (critical for DALI-2 compliance)
 #define QUERY_RESPONSE_TIMEOUT_MS 22
 
-// Response queue and bus arbitration
-#define RESPONSE_QUEUE_SIZE 10
+// Bus idle detection
 #define BUS_IDLE_TIMEOUT_MS 100
-#define MAX_RESPONSE_RETRIES 3
 ```
 
 ### Build Size
@@ -363,11 +361,10 @@ The ballast automatically responds to DALI commands from external masters:
 - QUERY_SCENE_LEVEL (0-15)
 
 **Response Timing:**
-- Query responses queued and sent when bus is idle
-- Bus arbitration prevents collisions with other devices
-- Target response time < 22ms (DALI requirement)
+- Immediate response within 2.91-22ms (DALI-2 requirement)
+- No queueing - responses sent immediately after query
 - 8-bit backward frames (standard DALI response format)
-- Automatic retry on transmission failure (up to 3 attempts)
+- DALI-2 compliant - no retry mechanism for backward frames
 
 **Commissioning Support:**
 - INITIALISE - Enter commissioning mode
@@ -524,23 +521,10 @@ Published every 60 seconds when diagnostics are enabled in settings.
 
 1. Check serial output for response timing
 2. Verify DALI TX pin connection (GPIO17)
-3. Check if responses are being queued (serial output)
-4. Monitor for "Waiting for bus idle" messages
-5. On very busy buses, responses may be delayed waiting for idle period
-6. Try power cycle of ballast
-7. Check for DALI bus collisions
-8. Verify response queue isn't full (serial output shows "Response queue full")
-
-### Responses Delayed on Busy Bus
-
-If responses are slow on a busy DALI bus:
-
-1. This is normal behavior - bus arbitration waits for idle periods
-2. Check serial output for "Waiting for bus idle to send response" messages
-3. Bus waits for 100ms of silence before transmitting
-4. Responses are queued and sent in order
-5. Failed responses are automatically retried (up to 3 times)
-6. If bus is constantly busy, consider reducing other master's polling rate
+3. Responses must be sent within 2.91-22ms of query
+4. Try power cycle of ballast
+5. Check for DALI bus collisions
+6. Verify DALI transceiver circuit is working
 
 ### Web Interface Not Loading
 
@@ -588,23 +572,23 @@ esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 460800 \
 
 ## 📊 Performance
 
-- **Query Response:** < 22ms target (queued with bus arbitration)
-- **Response Queue:** 10 responses
+- **Query Response:** Immediate, within 2.91-22ms (DALI-2 compliant)
+- **Backward Frame:** 8-bit response, no retry
 - **Bus Idle Detection:** 100ms timeout
-- **Response Retries:** Up to 3 attempts on failure
-- **Backward Frame:** 8-bit response
 - **MQTT Buffer:** 512 bytes
 - **Recent Messages:** Last 20 stored
 - **Fade Update:** 50ms intervals
 - **Watchdog:** 30 second timeout
+- **Flash Writes:** Only on manual save via web UI (minimizes wear)
 
 ## 🔒 Security Notes
 
 - Web interface authentication uses HTTP Basic Auth (not encrypted without HTTPS)
 - Default username is `admin` (configurable via web interface)
-- Ballast config and credentials stored in NVS (plain text)
+- Ballast config and credentials stored in NVS (plain text, not in source code)
 - Consider using VPN or isolated network for production
 - Change default AP password in config.h before deployment
+- No sensitive data in source code - credentials entered via web UI
 
 ## 📝 Version Information
 

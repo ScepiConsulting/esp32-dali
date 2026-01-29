@@ -166,38 +166,55 @@ void handleDashboard() {
   html += "<div class=\"card\" style=\"margin-top:20px;\">";
   html += "<h2>Current Status</h2>";
 
-  // Device type
+  // Device type - show combined device_type + active_color_type for DT8
   String deviceTypeName;
   switch (ballastState.device_type) {
-    case 0: deviceTypeName = "Normal (DT0)"; break;
-    case 6: deviceTypeName = "LED (DT6)"; break;
-    case 8: deviceTypeName = "RGB (DT8)"; break;
-    case 9: deviceTypeName = "RGBW (DT8)"; break;
-    case 10: deviceTypeName = "Color Temperature (DT8)"; break;
+    case DT0_NORMAL: deviceTypeName = "Normal (DT0)"; break;
+    case DT6_LED: deviceTypeName = "LED (DT6)"; break;
+    case DT8_COLOUR:
+      switch (ballastState.active_color_type) {
+        case DT8_MODE_TC: deviceTypeName = "Colour Temperature (DT8)"; break;
+        case DT8_MODE_XY: deviceTypeName = "XY Chromaticity (DT8)"; break;
+        default: 
+          if (ballastState.color_w > 0) deviceTypeName = "RGBW (DT8)";
+          else deviceTypeName = "RGB (DT8)";
+          break;
+      }
+      break;
     default: deviceTypeName = "Unknown"; break;
   }
   html += "<div class=\"status\"><div class=\"dot green\"></div><span>Device Type: " + deviceTypeName + "</span></div>";
 
-  // Address
+  // Address with source indicator
+  String addrSourceStr;
+  switch (ballastState.address_source) {
+    case ADDR_MANUAL: addrSourceStr = "Manual"; break;
+    case ADDR_COMMISSIONED: addrSourceStr = "Commissioned"; break;
+    default: addrSourceStr = "Unassigned"; break;
+  }
   html += "<div class=\"status\"><div class=\"dot green\"></div><span>Address: ";
   if (ballastState.short_address == 255) {
     html += "Unaddressed";
   } else {
-    html += String(ballastState.short_address);
+    html += String(ballastState.short_address) + " (" + addrSourceStr + ")";
   }
-  html += " (" + String(ballastState.address_mode_auto ? "Auto" : "Manual") + ")</span></div>";
+  html += "</span></div>";
+  html += "<div class=\"status\"><div class=\"dot " + String(ballastState.address_mode_auto ? "green" : "yellow") + "\"></div><span>Mode: " + String(ballastState.address_mode_auto ? "Auto (accepts commissioning)" : "Manual (fixed address)") + "</span></div>";
 
   // Brightness
   html += "<div class=\"status\"><div class=\"dot " + String(ballastState.lamp_arc_power_on ? "green" : "red") + "\"></div><span>Level: " + String(ballastState.actual_level) + " (" + String((ballastState.actual_level / 254.0) * 100.0, 1) + "%)</span></div>";
 
-  // Color values based on device type
-  if (ballastState.device_type == 8 || ballastState.device_type == 9) {
-    html += "<div class=\"status\"><div class=\"dot green\"></div><span>RGB: (" + String(ballastState.color_r) + ", " + String(ballastState.color_g) + ", " + String(ballastState.color_b) + ")</span></div>";
-    if (ballastState.device_type == 9) {
-      html += "<div class=\"status\"><div class=\"dot green\"></div><span>White: " + String(ballastState.color_w) + "</span></div>";
+  // Color values based on device type and color mode
+  if (ballastState.device_type == DT8_COLOUR) {
+    if (ballastState.active_color_type == DT8_MODE_TC) {
+      uint16_t display_kelvin = (ballastState.color_temp_mirek > 0) ? (1000000 / ballastState.color_temp_mirek) : 4000;
+      html += "<div class=\"status\"><div class=\"dot green\"></div><span>Color Temp: " + String(display_kelvin) + "K</span></div>";
+    } else {
+      html += "<div class=\"status\"><div class=\"dot green\"></div><span>RGB: (" + String(ballastState.color_r) + ", " + String(ballastState.color_g) + ", " + String(ballastState.color_b) + ")</span></div>";
+      if (ballastState.color_w > 0) {
+        html += "<div class=\"status\"><div class=\"dot green\"></div><span>White: " + String(ballastState.color_w) + "</span></div>";
+      }
     }
-  } else if (ballastState.device_type == 10) {
-    html += "<div class=\"status\"><div class=\"dot green\"></div><span>Color Temp: " + String(ballastState.color_temp_kelvin) + "K</span></div>";
   }
 
   // Fade status
@@ -419,12 +436,19 @@ void handleBallastConfig() {
   html += "<form method=\"POST\" action=\"/dali\" id=\"ballast-form\" onsubmit=\"saveBallastConfig(event)\">";
 
   html += "<label for=\"device_type\">Device Type</label>";
+  // Determine UI device type value from device_type + active_color_type
+  uint8_t ui_dt = ballastState.device_type;
+  if (ballastState.device_type == DT8_COLOUR) {
+    if (ballastState.active_color_type == DT8_MODE_TC) ui_dt = 10;  // Color Temp
+    else if (ballastState.color_w > 0) ui_dt = 9;  // RGBW (has white channel)
+    else ui_dt = 8;  // RGB
+  }
   html += "<select id=\"device_type\" name=\"device_type\" onchange=\"updateDeviceTypeFields()\" style=\"width:100%;padding:12px;border:2px solid var(--border-color);border-radius:8px;font-size:16px;margin-bottom:16px;background:var(--bg-primary);color:var(--text-primary);\">";
-  html += "<option value=\"0\"" + String(ballastState.device_type == 0 ? " selected" : "") + ">Normal (IEC 62386-102)</option>";
-  html += "<option value=\"6\"" + String(ballastState.device_type == 6 ? " selected" : "") + ">LED (DT6 - IEC 62386-207)</option>";
-  html += "<option value=\"8\"" + String(ballastState.device_type == 8 ? " selected" : "") + ">RGB (DT8 - IEC 62386-209)</option>";
-  html += "<option value=\"9\"" + String(ballastState.device_type == 9 ? " selected" : "") + ">RGBW (DT8 - IEC 62386-209)</option>";
-  html += "<option value=\"10\"" + String(ballastState.device_type == 10 ? " selected" : "") + ">Colour Temperature (DT8 - IEC 62386-209)</option>";
+  html += "<option value=\"0\"" + String(ui_dt == 0 ? " selected" : "") + ">Normal (IEC 62386-102)</option>";
+  html += "<option value=\"6\"" + String(ui_dt == 6 ? " selected" : "") + ">LED (DT6 - IEC 62386-207)</option>";
+  html += "<option value=\"8\"" + String(ui_dt == 8 ? " selected" : "") + ">RGB (DT8 - IEC 62386-209)</option>";
+  html += "<option value=\"9\"" + String(ui_dt == 9 ? " selected" : "") + ">RGBW (DT8 - IEC 62386-209)</option>";
+  html += "<option value=\"10\"" + String(ui_dt == 10 ? " selected" : "") + ">Colour Temperature (DT8 - IEC 62386-209)</option>";
   html += "</select>";
 
   html += "<div style=\"margin-bottom:16px;\">";
@@ -491,7 +515,8 @@ void handleBallastConfig() {
   html += "<div id=\"cct-fields\" style=\"display:none;\">";
   html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">Colour Temperature Control (DT8 - IEC 62386-209)</h3>";
   html += "<label for=\"color_temp\">Color Temperature (Kelvin)</label>";
-  html += "<input type=\"number\" id=\"color_temp\" name=\"color_temp\" value=\"" + String(ballastState.color_temp_kelvin) + "\" min=\"2700\" max=\"6500\" step=\"100\">";
+  uint16_t cfg_kelvin = (ballastState.color_temp_mirek > 0) ? (1000000 / ballastState.color_temp_mirek) : 4000;
+  html += "<input type=\"number\" id=\"color_temp\" name=\"color_temp\" value=\"" + String(cfg_kelvin) + "\" min=\"2700\" max=\"6500\" step=\"100\">";
   html += "<p style=\"font-size:12px;color:var(--text-secondary);margin-top:-8px;\">Typical range: 2700K (warm) to 6500K (cool)</p>";
   html += "</div>";
 
@@ -506,29 +531,25 @@ void handleBallastConfig() {
   html += "<label for=\"ctrl_level\">Brightness Level (0-254)</label>";
   html += "<input type=\"number\" id=\"ctrl_level\" name=\"level\" value=\"" + String(ballastState.actual_level) + "\" min=\"0\" max=\"254\">";
 
-  // Show color controls based on saved device type
-  if (ballastState.device_type == 8) {
-    html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">RGB Color</h3>";
-    html += "<label for=\"ctrl_r\">Red (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_r\" name=\"color_r\" value=\"" + String(ballastState.color_r) + "\" min=\"0\" max=\"255\">";
-    html += "<label for=\"ctrl_g\">Green (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_g\" name=\"color_g\" value=\"" + String(ballastState.color_g) + "\" min=\"0\" max=\"255\">";
-    html += "<label for=\"ctrl_b\">Blue (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_b\" name=\"color_b\" value=\"" + String(ballastState.color_b) + "\" min=\"0\" max=\"255\">";
-  } else if (ballastState.device_type == 9) {
-    html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">RGBW Color</h3>";
-    html += "<label for=\"ctrl_r\">Red (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_r\" name=\"color_r\" value=\"" + String(ballastState.color_r) + "\" min=\"0\" max=\"255\">";
-    html += "<label for=\"ctrl_g\">Green (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_g\" name=\"color_g\" value=\"" + String(ballastState.color_g) + "\" min=\"0\" max=\"255\">";
-    html += "<label for=\"ctrl_b\">Blue (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_b\" name=\"color_b\" value=\"" + String(ballastState.color_b) + "\" min=\"0\" max=\"255\">";
-    html += "<label for=\"ctrl_w\">White (0-255)</label>";
-    html += "<input type=\"number\" id=\"ctrl_w\" name=\"color_w\" value=\"" + String(ballastState.color_w) + "\" min=\"0\" max=\"255\">";
-  } else if (ballastState.device_type == 10) {
-    html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">Color Temperature</h3>";
-    html += "<label for=\"ctrl_temp\">Temperature (Kelvin)</label>";
-    html += "<input type=\"number\" id=\"ctrl_temp\" name=\"color_temp\" value=\"" + String(ballastState.color_temp_kelvin) + "\" min=\"2700\" max=\"6500\" step=\"100\">";
+  // Show color controls based on device type and color mode
+  if (ballastState.device_type == DT8_COLOUR) {
+    if (ballastState.active_color_type == DT8_MODE_TC) {
+      html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">Color Temperature</h3>";
+      html += "<label for=\"ctrl_temp\">Temperature (Kelvin)</label>";
+      uint16_t ctrl_kelvin = (ballastState.color_temp_mirek > 0) ? (1000000 / ballastState.color_temp_mirek) : 4000;
+      html += "<input type=\"number\" id=\"ctrl_temp\" name=\"color_temp\" value=\"" + String(ctrl_kelvin) + "\" min=\"2700\" max=\"6500\" step=\"100\">";
+    } else {
+      // RGBWAF mode - show RGB and optionally W
+      html += "<h3 style=\"margin:20px 0 12px 0;font-size:16px;color:var(--text-primary);\">RGB" + String(ballastState.color_w > 0 ? "W" : "") + " Color</h3>";
+      html += "<label for=\"ctrl_r\">Red (0-255)</label>";
+      html += "<input type=\"number\" id=\"ctrl_r\" name=\"color_r\" value=\"" + String(ballastState.color_r) + "\" min=\"0\" max=\"255\">";
+      html += "<label for=\"ctrl_g\">Green (0-255)</label>";
+      html += "<input type=\"number\" id=\"ctrl_g\" name=\"color_g\" value=\"" + String(ballastState.color_g) + "\" min=\"0\" max=\"255\">";
+      html += "<label for=\"ctrl_b\">Blue (0-255)</label>";
+      html += "<input type=\"number\" id=\"ctrl_b\" name=\"color_b\" value=\"" + String(ballastState.color_b) + "\" min=\"0\" max=\"255\">";
+      html += "<label for=\"ctrl_w\">White (0-255)</label>";
+      html += "<input type=\"number\" id=\"ctrl_w\" name=\"color_w\" value=\"" + String(ballastState.color_w) + "\" min=\"0\" max=\"255\">";
+    }
   }
 
   html += "<button type=\"submit\">Apply</button>";
@@ -543,10 +564,9 @@ void handleBallastConfig() {
   html += "}";
   html += "function updateDeviceTypeFields(){";
   html += "const dt=document.getElementById('device_type').value;";
-  html += "document.getElementById('dt6-fields').style.display=(dt=='6')?'block':'none';";
-  html += "document.getElementById('rgb-fields').style.display=(dt=='8')?'block':'none';";
-  html += "document.getElementById('rgbw-fields').style.display=(dt=='9')?'block':'none';";
-  html += "document.getElementById('cct-fields').style.display=(dt=='10')?'block':'none';";
+  html += "const sections=[{id:'dt6-fields',show:dt=='6'},{id:'rgb-fields',show:dt=='8'},{id:'rgbw-fields',show:dt=='9'},{id:'cct-fields',show:dt=='10'}];";
+  html += "sections.forEach(s=>{const el=document.getElementById(s.id);el.style.display=s.show?'block':'none';";
+  html += "el.querySelectorAll('input').forEach(i=>i.disabled=!s.show);});";
   html += "}";
   html += "updateDeviceTypeFields();";
   html += "function saveBallastConfig(e){";
@@ -573,8 +593,35 @@ void handleBallastSave() {
   if (!checkAuth()) return;
 
   ballastState.address_mode_auto = server.hasArg("address_auto");
-  ballastState.short_address = ballastState.address_mode_auto ? 255 : server.arg("address").toInt();
-  ballastState.device_type = server.arg("device_type").toInt();
+  
+  // Handle address assignment
+  if (ballastState.address_mode_auto) {
+    // Auto mode: keep current address if commissioned, otherwise unaddressed
+    if (ballastState.address_source != ADDR_COMMISSIONED) {
+      ballastState.short_address = 255;
+      ballastState.address_source = ADDR_UNASSIGNED;
+    }
+    // If already commissioned, keep the commissioned address
+  } else {
+    // Manual mode: set address from form
+    ballastState.short_address = server.arg("address").toInt();
+    ballastState.address_source = ADDR_MANUAL;
+  }
+  
+  // Handle device type - UI uses 8/9/10 for DT8 sub-modes, but internally all are DT8
+  uint8_t ui_device_type = server.arg("device_type").toInt();
+  if (ui_device_type == 8) {
+    ballastState.device_type = DT8_COLOUR;
+    ballastState.active_color_type = DT8_MODE_RGBWAF;  // RGB mode
+  } else if (ui_device_type == 9) {
+    ballastState.device_type = DT8_COLOUR;
+    ballastState.active_color_type = DT8_MODE_RGBWAF;  // RGBW mode (same as RGB, just uses W channel)
+  } else if (ui_device_type == 10) {
+    ballastState.device_type = DT8_COLOUR;
+    ballastState.active_color_type = DT8_MODE_TC;      // Color Temperature mode
+  } else {
+    ballastState.device_type = ui_device_type;  // DT0 or DT6
+  }
 
   // Standard fields (for Normal mode)
   if (server.hasArg("min_level")) ballastState.min_level = server.arg("min_level").toInt();
@@ -594,7 +641,10 @@ void handleBallastSave() {
   if (server.hasArg("color_w")) ballastState.color_w = server.arg("color_w").toInt();
 
   // DT8 Color Temperature
-  if (server.hasArg("color_temp")) ballastState.color_temp_kelvin = server.arg("color_temp").toInt();
+  if (server.hasArg("color_temp")) {
+    uint16_t input_kelvin = server.arg("color_temp").toInt();
+    ballastState.color_temp_mirek = (input_kelvin > 0) ? (1000000 / input_kelvin) : 250;
+  }
 
   saveBallastConfig();
   publishBallastConfig();
@@ -634,7 +684,8 @@ void handleBallastControl() {
     updateLED();
   }
   if (server.hasArg("color_temp")) {
-    ballastState.color_temp_kelvin = server.arg("color_temp").toInt();
+    uint16_t input_kelvin = server.arg("color_temp").toInt();
+    ballastState.color_temp_mirek = (input_kelvin > 0) ? (1000000 / input_kelvin) : 250;
     updateLED();
   }
 

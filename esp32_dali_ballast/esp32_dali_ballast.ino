@@ -155,8 +155,6 @@ void loop() {
   mqttLoop();
 
   monitorDaliBus();
-  
-  processResponseQueue();
 
   unsigned long now = millis();
   if (now - lastFadeUpdate >= FADE_UPDATE_INTERVAL) {

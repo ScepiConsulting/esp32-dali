@@ -14,6 +14,8 @@ unsigned long lastDaliCommandTime = 0;
 unsigned long lastBusActivityTime = 0;
 bool busIsIdle = true;
 CommissioningProgress commissioningProgress;
+PassiveDevice passiveDevices[DALI_MAX_ADDRESSES];
+uint8_t lastQueriedAddress = 255;  // Track last address that was queried (for passive discovery)
 
 hw_timer_t *timer = NULL;
 
@@ -46,10 +48,57 @@ void daliInit() {
   timerAlarm(timer, 1000, true, 0);
 
   dali.begin(bus_is_high, bus_set_high, bus_set_low);
+  
+  clearPassiveDevices();
 
 #ifdef DEBUG_SERIAL
   Serial.println("DALI initialized");
 #endif
+}
+
+// Passive device discovery functions
+void clearPassiveDevices() {
+  memset(passiveDevices, 0, sizeof(passiveDevices));
+  for (int i = 0; i < DALI_MAX_ADDRESSES; i++) {
+    passiveDevices[i].last_level = 255;    // Unknown
+    passiveDevices[i].device_type = 255;   // Unknown
+  }
+}
+
+uint8_t getPassiveDeviceCount() {
+  uint8_t count = 0;
+  for (int i = 0; i < DALI_MAX_ADDRESSES; i++) {
+    if (passiveDevices[i].last_seen > 0) count++;
+  }
+  return count;
+}
+
+void updatePassiveDevice(uint8_t address, const DaliMessage& msg) {
+  if (address >= DALI_MAX_ADDRESSES) return;
+  
+  passiveDevices[address].last_seen = millis();
+  
+  // Extract level from DAPC commands
+  if (msg.parsed.type == "DAPC" || msg.parsed.type == "dapc") {
+    passiveDevices[address].last_level = msg.parsed.level;
+  }
+}
+
+// Called when we see a query command to an address - remember it for response matching
+void trackQueryAddress(uint8_t address) {
+  if (address < DALI_MAX_ADDRESSES) {
+    lastQueriedAddress = address;
+  }
+}
+
+// Called when we see a backward frame (response) - mark the last queried address as having a device
+void handleResponse(const DaliMessage& msg) {
+  if (lastQueriedAddress < DALI_MAX_ADDRESSES) {
+    passiveDevices[lastQueriedAddress].last_seen = millis();
+    passiveDevices[lastQueriedAddress].last_level = msg.parsed.level;
+    passiveDevices[lastQueriedAddress].flags |= 0x01;  // Bit 0 = responded to query
+    lastQueriedAddress = 255;  // Reset
+  }
 }
 
 String getAddressPrefix(String address_type, uint8_t address) {
@@ -222,13 +271,38 @@ DaliMessage parseDaliMessage(uint8_t* bytes, uint8_t length, bool is_tx) {
         msg.parsed.address_type = "short";
       }
 
-      // DTR0 special command (0xA3 with special addressing)
+      // Special commands with special address bytes (broadcast commands)
       if (addr_byte == 0xA3) {
         msg.parsed.type = "set_dtr0";
         msg.parsed.address_type = "broadcast";
         msg.parsed.address = 0xFF;
         msg.parsed.level = data_byte;
         msg.description = "Broadcast: Set DTR0 = " + String(data_byte);
+      } else if (addr_byte == 0xC1) {
+        msg.parsed.type = "enable_device_type";
+        msg.parsed.address_type = "broadcast";
+        msg.parsed.address = 0xFF;
+        msg.parsed.level = data_byte;
+        String dt_name;
+        switch (data_byte) {
+          case 0: dt_name = "Normal (DT0)"; break;
+          case 6: dt_name = "LED (DT6)"; break;
+          case 8: dt_name = "Colour (DT8)"; break;
+          default: dt_name = "DT" + String(data_byte); break;
+        }
+        msg.description = "Broadcast: Enable Device Type " + dt_name;
+      } else if (addr_byte == 0xC3) {
+        msg.parsed.type = "set_dtr1";
+        msg.parsed.address_type = "broadcast";
+        msg.parsed.address = 0xFF;
+        msg.parsed.level = data_byte;
+        msg.description = "Broadcast: Set DTR1 = " + String(data_byte);
+      } else if (addr_byte == 0xC5) {
+        msg.parsed.type = "set_dtr2";
+        msg.parsed.address_type = "broadcast";
+        msg.parsed.address = 0xFF;
+        msg.parsed.level = data_byte;
+        msg.description = "Broadcast: Set DTR2 = " + String(data_byte);
       } else {
 
       String addrPrefix = getAddressPrefix(msg.parsed.address_type, msg.parsed.address);
@@ -402,6 +476,41 @@ DaliMessage parseDaliMessage(uint8_t* bytes, uint8_t length, bool is_tx) {
             msg.parsed.type = "query_scene_level";
             uint8_t scene = data_byte - DALI_QUERY_SCENE_LEVEL;
             msg.description = addrPrefix + ": Query scene " + String(scene) + " level";
+          } else if (data_byte >= 0xE0 && data_byte <= 0xFC) {
+            // DT8 Color Commands (IEC 62386-209) - only valid after ENABLE_DEVICE_TYPE(8)
+            msg.parsed.type = "dt8_command";
+            String dt8_cmd;
+            switch (data_byte) {
+              case 0xE0: dt8_cmd = "SetTemporaryXCoordinate"; break;
+              case 0xE1: dt8_cmd = "SetTemporaryYCoordinate"; break;
+              case 0xE2: dt8_cmd = "Activate"; break;
+              case 0xE3: dt8_cmd = "XCoordinateStepUp"; break;
+              case 0xE4: dt8_cmd = "XCoordinateStepDown"; break;
+              case 0xE5: dt8_cmd = "YCoordinateStepUp"; break;
+              case 0xE6: dt8_cmd = "YCoordinateStepDown"; break;
+              case 0xE7: dt8_cmd = "SetTemporaryColourTemperature"; break;
+              case 0xE8: dt8_cmd = "ColourTemperatureStepCooler"; break;
+              case 0xE9: dt8_cmd = "ColourTemperatureStepWarmer"; break;
+              case 0xEA: dt8_cmd = "SetTemporaryPrimaryNDimLevel"; break;
+              case 0xEB: dt8_cmd = "SetTemporaryRGBDimLevel"; break;
+              case 0xEC: dt8_cmd = "SetTemporaryWAFDimLevel"; break;
+              case 0xED: dt8_cmd = "SetTemporaryRGBWAFControl"; break;
+              case 0xEE: dt8_cmd = "CopyReportToTemporary"; break;
+              case 0xF0: dt8_cmd = "StoreTYPrimaryN"; break;
+              case 0xF1: dt8_cmd = "StoreXYCoordinatePrimaryN"; break;
+              case 0xF2: dt8_cmd = "StoreColourTemperatureTcLimit"; break;
+              case 0xF3: dt8_cmd = "StoreGearFeaturesStatus"; break;
+              case 0xF5: dt8_cmd = "AssignColourToLinkedChannel"; break;
+              case 0xF6: dt8_cmd = "StartAutoCalibration"; break;
+              case 0xF7: dt8_cmd = "QueryGearFeaturesStatus"; break;
+              case 0xF8: dt8_cmd = "QueryColourStatus"; break;
+              case 0xF9: dt8_cmd = "QueryColourTypeFeatures"; break;
+              case 0xFA: dt8_cmd = "QueryColourValue"; break;
+              case 0xFB: dt8_cmd = "QueryRGBWAFControl"; break;
+              case 0xFC: dt8_cmd = "QueryAssignedColour"; break;
+              default: dt8_cmd = "DT8_0x" + String(data_byte, HEX); break;
+            }
+            msg.description = addrPrefix + ": DT8 " + dt8_cmd;
           } else {
             msg.description = addrPrefix + ": Command 0x" + String(data_byte, HEX);
           }
@@ -507,6 +616,17 @@ void monitorDaliBus() {
 
     recentMessages[recentMessagesIndex] = msg;
     recentMessagesIndex = (recentMessagesIndex + 1) % RECENT_MESSAGES_SIZE;
+
+    // Passive device tracking:
+    // - Track query commands to remember which address was queried
+    // - When a response comes, mark that address as having a real device
+    if (msg.parsed.type == "response") {
+      // Backward frame - a device responded!
+      handleResponse(msg);
+    } else if (msg.parsed.address_type == "short" && msg.parsed.address < DALI_MAX_ADDRESSES) {
+      // Forward frame to a specific address - track it for response matching
+      trackQueryAddress(msg.parsed.address);
+    }
 
     publishMonitor(msg);
   }

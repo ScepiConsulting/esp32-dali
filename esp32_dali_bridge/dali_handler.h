@@ -16,8 +16,12 @@ extern unsigned long lastDaliCommandTime;
 extern unsigned long lastBusActivityTime;
 extern bool busIsIdle;
 extern CommissioningProgress commissioningProgress;
+extern PassiveDevice passiveDevices[DALI_MAX_ADDRESSES];
 
 void daliInit();
+void updatePassiveDevice(uint8_t address, const DaliMessage& msg);
+void clearPassiveDevices();
+uint8_t getPassiveDeviceCount();
 DaliMessage parseDaliMessage(uint8_t* bytes, uint8_t length, bool is_tx);
 bool validateDaliCommand(const DaliCommand& cmd);
 bool enqueueDaliCommand(const DaliCommand& cmd);

@@ -337,6 +337,14 @@ Access the web interface at `http://<device-ip>`
 - Scan takes ~3-4 seconds for 64 addresses
 - Uses bus arbitration to avoid collisions on busy buses
 
+**Observed Devices (Passive Discovery):**
+- Automatically learns devices from bus traffic without active scanning
+- Shows devices that have responded to queries (not just queried addresses)
+- Displays: address, last known level, time since last seen
+- No persistence - clears on reboot
+- Minimal RAM usage (~512 bytes for 64 addresses)
+- Click "Refresh" on DALI Control page to view
+
 **Device Commissioning:**
 - Automatically assign addresses to unaddressed devices
 - **Via Web Interface:**
@@ -662,10 +670,11 @@ esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 460800 \
 
 - Web interface authentication uses HTTP Basic Auth (not encrypted without HTTPS)
 - Default username is `admin` (configurable via web interface)
-- Web and MQTT credentials stored in NVS (plain text)
+- Web and MQTT credentials stored in NVS (plain text, not in source code)
 - Consider using VPN or isolated network for production
 - Change default AP password in config.h before deployment
 - WiFi and web authentication credentials are stored separately
+- No sensitive data in source code - credentials entered via web UI
 
 ## 📝 Version Information
 

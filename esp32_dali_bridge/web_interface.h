@@ -30,6 +30,7 @@ void handleLogoDark();
 void handleAPIStatus();
 void handleAPIDiagnostics();
 void handleAPIRecent();
+void handleAPIPassiveDevices();
 
 String buildHTMLHeader(const String& title);
 String buildHTMLFooter();
