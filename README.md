@@ -177,10 +177,6 @@ Ballast  Real     Real     Real
 - [ESP32 DALI Ballast](esp32_dali_ballast/README.md) - Complete ballast documentation
 - [ESP32 WiFi Test](esp32_wifi_test/README.md) - WiFi test documentation
 
-### Planning Documentation
-- [Bridge Planning Docs](ai_helpers/esp32_dali_bridge/) - Implementation plans, testing guides
-- [Ballast Planning Docs](ai_helpers/esp32_dali_ballast/) - Implementation plan, hardware setup, protocol reference
-
 ## 🔒 Security Notes
 
 - Web interfaces use HTTP Basic Auth (not encrypted without HTTPS)

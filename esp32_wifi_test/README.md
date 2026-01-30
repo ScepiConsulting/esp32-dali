@@ -118,7 +118,9 @@ Simple test project - no formal versioning
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+This project is licensed under **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International).
+
+See [LICENSE](../LICENSE) file for full details.
 
 ---
 

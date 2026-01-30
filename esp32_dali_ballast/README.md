@@ -617,7 +617,9 @@ This is a personal project, but suggestions and bug reports are welcome.
 
 ## 📄 License
 
-MIT License - See LICENSE file for details
+This project is licensed under **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International).
+
+See [LICENSE](../LICENSE) file for full details.
 
 ## 🙏 Acknowledgments
 
@@ -627,13 +629,6 @@ MIT License - See LICENSE file for details
 - Ballast emulation follows IEC 62386 DALI standard
 - Bus arbitration implements collision avoidance for multi-master environments
 - Commissioning protocol follows IEC 62386-102 specification
-
-## 📚 Additional Documentation
-
-See `ai_helpers/esp32_dali_ballast/` for detailed planning documentation:
-- **IMPLEMENTATION_PLAN.md** - Complete technical specification
-- **HARDWARE_SETUP.md** - Detailed hardware setup guide
-- **DALI_BALLAST_PROTOCOL.md** - DALI protocol reference
 
 ---
 
