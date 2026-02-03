@@ -33,4 +33,9 @@ void mqttPublish(const String& topic, const String& payload, bool retained = fal
 extern void onMqttConnected();
 extern void onMqttMessage(const String& topic, const String& payload);
 
+extern String getMqttTopicsHTML();
+extern String getMqttFilterConfigHTML();
+extern void loadMqttFilterSettings();
+extern void saveMqttFilterSettings();
+
 #endif

@@ -13,4 +13,9 @@ void publishMonitor(const DaliMessage& msg);
 void publishScanResult(const DaliScanResult& result);
 void publishCommissioningProgress(const CommissioningProgress& progress);
 
+String getMqttTopicsHTML();
+String getMqttFilterConfigHTML();
+void loadMqttFilterSettings();
+void saveMqttFilterSettings();
+
 #endif

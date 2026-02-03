@@ -109,10 +109,19 @@ void handleDiagnosticsPage() {
   html += "<button type=\"submit\">Save Settings</button>";
   html += "</form>";
 
-  html += "<div style=\"margin-top:20px;\">";
-  html += "<h2>Function Statistics</h2>";
-  html += getFunctionDiagnosticsHTML();
-  html += "</div>";
+  std::vector<DiagnosticSection> sections = getFunctionDiagnosticSections();
+  for (const auto& section : sections) {
+    html += "<div style=\"margin-top:20px;padding-top:20px;border-top:1px solid var(--border-color);\">";
+    if (section.title.length() > 0) {
+      html += "<h2>" + section.title + "</h2>";
+    }
+    html += "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:14px;\">";
+    for (const auto& item : section.items) {
+      html += "<div style=\"color:var(--text-secondary);\">" + item.label + ":</div>";
+      html += "<div>" + item.value + "</div>";
+    }
+    html += "</div></div>";
+  }
 
   html += "<div style=\"margin-top:20px;\">";
   html += "<button onclick=\"exportDiagnostics()\" style=\"background:var(--accent-green);\">Export Diagnostics JSON</button>";

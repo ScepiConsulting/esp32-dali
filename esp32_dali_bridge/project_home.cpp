@@ -38,5 +38,27 @@ String getFunctionHomeHTML() {
 
   html += "</div>";
 
+  html += "<div style=\"margin-top:20px;padding-top:20px;border-top:1px solid var(--border-color);\">";
+  html += "<h2>Recent Messages</h2>";
+  html += "<p style=\"color:var(--text-secondary);font-size:14px;margin-bottom:12px;\">Last 20 DALI bus messages</p>";
+  html += "<button onclick=\"loadRecentMessages()\" style=\"background:var(--accent-green);margin-bottom:16px;\">Refresh Messages</button>";
+  html += "<div id=\"recent-messages\" style=\"font-size:12px;font-family:monospace;max-height:300px;overflow-y:auto;background:var(--bg-secondary);border-radius:8px;padding:8px;\"></div>";
+  html += "</div>";
+
+  html += "<script>";
+  html += "function loadRecentMessages(){";
+  html += "fetch('/api/recent').then(r=>r.json()).then(d=>{";
+  html += "let html='';";
+  html += "d.forEach(msg=>{if(msg.timestamp>0){";
+  html += "html+='<div style=\"border-bottom:1px solid var(--border-color);padding:8px;\">';";
+  html += "html+='<strong>'+(msg.is_tx?'TX':'RX')+'</strong> '+msg.parsed.description+'<br>';";
+  html += "html+='<span style=\"color:var(--text-secondary);\">Raw: '+msg.raw+'</span>';";
+  html += "html+='</div>';}});";
+  html += "document.getElementById('recent-messages').innerHTML=html||'<p style=\"padding:8px;color:var(--text-secondary);\">No messages yet</p>';";
+  html += "}).catch(e=>document.getElementById('recent-messages').innerHTML='<p style=\"padding:8px;color:#ef4444;\">Error loading messages</p>');";
+  html += "}";
+  html += "loadRecentMessages();";
+  html += "</script>";
+
   return html;
 }

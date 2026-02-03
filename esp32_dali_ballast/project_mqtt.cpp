@@ -89,3 +89,52 @@ void publishBallastConfig() {
 
   mqttPublish(topic, json, true);
 }
+
+String getMqttTopicsHTML() {
+  String html = "";
+
+  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Ballast Status:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "ballast_status</code></p>";
+  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Published when ballast state changes (level, fade, etc.)</p>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Ballast Status</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"timestamp\": 1234567890,<br>  \"address\": 0,<br>  \"actual_level\": 128,<br>  \"level_percent\": 50.4,<br>  \"target_level\": 128,<br>  \"fade_running\": false,<br>  \"lamp_arc_power_on\": true,<br>  \"lamp_failure\": false<br>}</pre></details>";
+
+  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Commands Received:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "command</code></p>";
+  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Published when ballast receives DALI commands from the bus</p>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Set Level Command</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"timestamp\": 1234567890,<br>  \"source\": \"bus\",<br>  \"command_type\": \"set_brightness\",<br>  \"address\": 0,<br>  \"value\": 128,<br>  \"value_percent\": 50.4,<br>  \"raw\": \"0180\",<br>  \"description\": \"Set to 128 (50.4%)\"<br>}</pre></details>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Query Response</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"timestamp\": 1234567891,<br>  \"source\": \"bus\",<br>  \"command_type\": \"query_actual_level\",<br>  \"address\": 0,<br>  \"is_query_response\": true,<br>  \"response\": \"0x80\",<br>  \"value\": 128,<br>  \"value_percent\": 50.4,<br>  \"raw\": \"01A0\",<br>  \"description\": \"Query actual level: 128 (50.4%)\"<br>}</pre></details>";
+
+  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Configuration:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "config</code></p>";
+  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Ballast configuration published on connect and when changed</p>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Configuration</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"address\": 0,<br>  \"min_level\": 1,<br>  \"max_level\": 254,<br>  \"power_on_level\": 254,<br>  \"system_failure_level\": 254,<br>  \"fade_time\": 0,<br>  \"fade_rate\": 7<br>}</pre></details>";
+
+  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Device Status:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "status</code></p>";
+  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Device online/offline status with uptime and IP address</p>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Device Status</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"status\": \"online\",<br>  \"uptime\": 12345,<br>  \"ip\": \"192.168.1.100\",<br>  \"client_id\": \"dali-ballast-AABBCC\"<br>}</pre></details>";
+
+  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Diagnostics:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "diagnostics</code></p>";
+  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Published periodically with message counters and error counts</p>";
+  html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
+  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Diagnostics</summary>";
+  html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"rx_count\": 42,<br>  \"tx_count\": 15,<br>  \"error_count\": 0,<br>  \"uptime\": 12345<br>}</pre></details>";
+
+  return html;
+}
+
+String getMqttFilterConfigHTML() {
+  return "";
+}
+
+void loadMqttFilterSettings() {
+}
+
+void saveMqttFilterSettings() {
+}

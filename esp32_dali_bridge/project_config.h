@@ -8,17 +8,18 @@
 // Project identification
 #define PROJECT_NAME "ESP32 DALI Bridge"
 #define PROJECT_SHORT_NAME "Bridge"
+#define PROJECT_HOME_SUBTITLE "System Home"
 
 // Access Point configuration
 #define AP_SSID_PREFIX "SCEPI-DALI-BRIDGE"
-#define AP_PASSWORD "scepi1234"
+#define AP_PASSWORD "daliconfig"
 
 // MQTT defaults
-#define MQTT_DEFAULT_PREFIX "scepi/v1/dali-bridge/"
+#define MQTT_DEFAULT_PREFIX "home/dali/"
 #define MQTT_DEFAULT_CLIENT_PREFIX "dali-bridge"
 
 // Navigation - Function page
-#define NAV_FUNCTION_NAME "DALI Control"
+#define NAV_FUNCTION_NAME "DALI"
 #define NAV_FUNCTION_URL "/dali"
 
 // Hardware - Built-in LED (not used, DALI uses GPIO17/14)

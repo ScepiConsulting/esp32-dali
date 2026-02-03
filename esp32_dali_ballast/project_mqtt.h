@@ -10,4 +10,9 @@ void publishBallastState();
 void publishBallastCommand(const BallastMessage& msg);
 void publishBallastConfig();
 
+String getMqttTopicsHTML();
+String getMqttFilterConfigHTML();
+void loadMqttFilterSettings();
+void saveMqttFilterSettings();
+
 #endif

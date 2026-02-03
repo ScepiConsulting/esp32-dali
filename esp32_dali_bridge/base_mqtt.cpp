@@ -69,6 +69,10 @@ void mqttCoreInit() {
 #endif
   }
 
+#if ENABLE_MQTT_FILTER_UI
+  loadMqttFilterSettings();
+#endif
+
   server.on("/mqtt", HTTP_GET, handleMQTTConfig);
   server.on("/mqtt", HTTP_POST, handleMQTTSave);
 }
@@ -176,6 +180,15 @@ String getMqttStatusHTML() {
   html += "<div class=\"dot " + String(mqttConnected ? "green" : (mqttConfigured ? "yellow" : "red")) + "\"></div>";
   html += "<span>MQTT: " + String(mqttConnected ? "Connected" : (mqttConfigured ? "Configured (not connected)" : "Not configured")) + "</span>";
   html += "</div>";
+
+  if (mqttConnected) {
+    html += "<div style=\"margin-top:20px;padding:16px;background:var(--bg-secondary);border-radius:8px;\">";
+    html += "<h3 style=\"margin:0 0 12px 0;font-size:16px;cursor:pointer;\" onclick=\"document.getElementById('mqtt-topics').style.display=document.getElementById('mqtt-topics').style.display==='none'?'block':'none'\">📡 MQTT Topics ▼</h3>";
+    html += "<div id=\"mqtt-topics\" style=\"display:none;font-size:13px;\">";
+    html += getMqttTopicsHTML();
+    html += "</div></div>";
+  }
+
   return html;
 }
 
@@ -237,6 +250,10 @@ void handleMQTTConfig() {
   html += "<option value=\"2\"" + String(qos == 2 ? " selected" : "") + ">2 - Exactly once</option>";
   html += "</select>";
 
+#if ENABLE_MQTT_FILTER_UI
+  html += getMqttFilterConfigHTML();
+#endif
+
   html += "<button type=\"submit\" style=\"margin-top:24px;\">Save MQTT Settings</button>";
   html += "</form></div>";
   html += buildHTMLFooter();
@@ -266,6 +283,10 @@ void handleMQTTSave() {
   prefs.putString("client_id", clientId);
   prefs.putUChar("qos", qos);
   prefs.end();
+
+#if ENABLE_MQTT_FILTER_UI
+  saveMqttFilterSettings();
+#endif
 
   String html = buildHTMLHeader("MQTT Settings Saved");
   html += "<div class=\"card\">";

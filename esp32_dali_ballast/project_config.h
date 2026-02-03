@@ -8,18 +8,19 @@
 // Project identification
 #define PROJECT_NAME "ESP32 DALI Ballast"
 #define PROJECT_SHORT_NAME "Ballast"
+#define PROJECT_HOME_SUBTITLE "Virtual DALI Ballast Emulator"
 
 // Access Point configuration
 #define AP_SSID_PREFIX "SCEPI-DALI-BALLAST"
-#define AP_PASSWORD "scepi1234"
+#define AP_PASSWORD "daliconfig"
 
 // MQTT defaults
-#define MQTT_DEFAULT_PREFIX "scepi/v1/dali-ballast/"
+#define MQTT_DEFAULT_PREFIX "home/dali/ballast/"
 #define MQTT_DEFAULT_CLIENT_PREFIX "dali-ballast"
 
 // Navigation - Function page
-#define NAV_FUNCTION_NAME "Ballast Config"
-#define NAV_FUNCTION_URL "/ballast"
+#define NAV_FUNCTION_NAME "DALI"
+#define NAV_FUNCTION_URL "/dali"
 
 // Hardware - Built-in LED (WS2812 on GPIO21)
 #define BUILTIN_LED_PIN 21

@@ -4,13 +4,38 @@
 #include "base_web.h"
 #include <Update.h>
 #include "esp_task_wdt.h"
+#include "esp_ota_ops.h"
+
+String getOtaErrorMessage(uint8_t error) {
+  switch (error) {
+    case UPDATE_ERROR_OK: return "OK";
+    case UPDATE_ERROR_WRITE: return "Flash write failed";
+    case UPDATE_ERROR_ERASE: return "Flash erase failed";
+    case UPDATE_ERROR_READ: return "Flash read failed";
+    case UPDATE_ERROR_SPACE: return "Not enough space for firmware";
+    case UPDATE_ERROR_SIZE: return "Firmware size mismatch";
+    case UPDATE_ERROR_STREAM: return "Stream read timeout";
+    case UPDATE_ERROR_MD5: return "MD5 checksum mismatch";
+    case UPDATE_ERROR_MAGIC_BYTE: return "Wrong magic byte - not a valid firmware file";
+    case UPDATE_ERROR_ACTIVATE: return "Could not activate firmware - wrong chip type? (compiled for different ESP32 variant)";
+    case UPDATE_ERROR_NO_PARTITION: return "No valid OTA partition found";
+    case UPDATE_ERROR_BAD_ARGUMENT: return "Invalid argument";
+    case UPDATE_ERROR_ABORT: return "Update aborted";
+    default: return "Unknown error (code " + String(error) + ")";
+  }
+}
 
 void otaInit() {
   server.on("/update", HTTP_GET, handleOTAPage);
   server.on("/update", HTTP_POST, []() {
-    server.send(200, "text/plain", Update.hasError() ? "FAIL" : "OK");
-    delay(2000);
-    ESP.restart();
+    if (Update.hasError()) {
+      String errorMsg = getOtaErrorMessage(Update.getError());
+      server.send(200, "text/plain", "FAIL:" + errorMsg);
+    } else {
+      server.send(200, "text/plain", "OK");
+      delay(2000);
+      ESP.restart();
+    }
   }, handleOTAUpload);
 }
 
@@ -60,8 +85,11 @@ void handleOTAPage() {
   html += ".then(r=>r.text())";
   html += ".then(result=>{";
   html += "if(result==='OK'){showComplete();}";
-  html += "else{document.getElementById('update-info').innerHTML='<p style=\"color:#ef4444;\">Update failed!</p>';}";
-  html += "}).catch(e=>{document.getElementById('update-info').innerHTML='<p style=\"color:#ef4444;\">Upload error: '+e+'</p>';});";
+  html += "else{";
+  html += "let errMsg='Update failed!';";
+  html += "if(result.startsWith('FAIL:')){errMsg=result.substring(5);}";
+  html += "document.getElementById('update-info').innerHTML='<div style=\"background:var(--bg-secondary);border-radius:8px;padding:24px;text-align:center;\"><h2 style=\"margin:0 0 16px 0;color:#ef4444;\">❌ Update Failed</h2><p style=\"margin:8px 0;color:var(--text-primary);font-weight:600;\">'+errMsg+'</p><p style=\"margin:16px 0 0 0;color:var(--text-secondary);font-size:14px;\">Please check that you are uploading the correct firmware for this device.</p><button onclick=\"window.location.reload()\" style=\"margin-top:20px;\">Try Again</button></div>';}";
+  html += "}).catch(e=>{document.getElementById('update-info').innerHTML='<div style=\"background:var(--bg-secondary);border-radius:8px;padding:24px;text-align:center;\"><h2 style=\"margin:0 0 16px 0;color:#ef4444;\">❌ Upload Error</h2><p style=\"margin:8px 0;\">'+e+'</p><button onclick=\"window.location.reload()\" style=\"margin-top:20px;\">Try Again</button></div>';});";
   html += "};";
   html += "function showComplete(){";
   html += "document.getElementById('update-info').style.display='none';";

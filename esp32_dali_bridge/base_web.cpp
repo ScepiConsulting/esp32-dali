@@ -70,7 +70,7 @@ void handleDashboard() {
   String html = buildHTMLHeader("Home");
   html += "<div class=\"card\">";
   html += "<h1>" + String(PROJECT_NAME) + "</h1>";
-  html += "<p class=\"subtitle\">System Home</p>";
+  html += "<p class=\"subtitle\">" + String(PROJECT_HOME_SUBTITLE) + "</p>";
 
   html += getWiFiStatusHTML();
   html += getMqttStatusHTML();

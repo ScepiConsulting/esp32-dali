@@ -2,6 +2,17 @@
 #define DIAGNOSTICS_CORE_H
 
 #include <Arduino.h>
+#include <vector>
+
+struct DiagnosticItem {
+  String label;
+  String value;
+};
+
+struct DiagnosticSection {
+  String title;
+  std::vector<DiagnosticItem> items;
+};
 
 struct CoreDiagnostics {
   unsigned long uptime_seconds;
@@ -25,7 +36,7 @@ void handleDiagnosticsPage();
 void handleDiagnosticsSave();
 void handleAPIDiagnostics();
 
-extern String getFunctionDiagnosticsHTML();
+extern std::vector<DiagnosticSection> getFunctionDiagnosticSections();
 extern String getFunctionDiagnosticsJSON();
 
 #endif

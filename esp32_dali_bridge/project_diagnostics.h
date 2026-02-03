@@ -2,8 +2,10 @@
 #define DIAGNOSTICS_DATA_H
 
 #include <Arduino.h>
+#include <vector>
+#include "base_diagnostics.h"
 
-String getFunctionDiagnosticsHTML();
+std::vector<DiagnosticSection> getFunctionDiagnosticSections();
 String getFunctionDiagnosticsJSON();
 
 #endif
