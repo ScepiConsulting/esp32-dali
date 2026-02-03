@@ -11,10 +11,10 @@
 
 // Access Point configuration
 #define AP_SSID_PREFIX "SCEPI-DALI-BRIDGE"
-#define AP_PASSWORD "daliconfig"
+#define AP_PASSWORD "scepi1234"
 
 // MQTT defaults
-#define MQTT_DEFAULT_PREFIX "home/dali/"
+#define MQTT_DEFAULT_PREFIX "scepi/v1/dali-bridge/"
 #define MQTT_DEFAULT_CLIENT_PREFIX "dali-bridge"
 
 // Navigation - Function page
