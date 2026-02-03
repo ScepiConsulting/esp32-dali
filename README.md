@@ -1,153 +1,412 @@
 # ESP32 DALI Projects
 
-A collection of ESP32-S3 based projects for DALI (Digital Addressable Lighting Interface) control and WiFi connectivity testing.
+ESP32-S3 based projects for DALI (Digital Addressable Lighting Interface) control, built on the modular `esp32-base` architecture.
 
 ## ⚠️ Disclaimer
 
 > **This repository was created with extensive use of AI assistance (Claude/Cascade).**
 > 
-> As a result, the code may contain:
-> - Bugs or unexpected behavior
-> - Suboptimal or inefficient implementations
-> - Redundant or overly verbose code
-> 
-> **This project was created for internal use only.** Feel free to use and modify it for your own non-commercial purposes, but please be aware of the above limitations. No warranty is provided.
-> 
-> Contributions, bug reports, and improvements are welcome!
+> The code may contain bugs, suboptimal implementations, or redundant code.
+> **Created for internal use only.** Use and modify for non-commercial purposes at your own risk.
+> Contributions and bug reports are welcome!
 
-## � Acknowledgments
+## 🏗️ Architecture
 
-- **[python-dali](https://github.com/sde1000/python-dali/)** by Stephen Early - Excellent Python DALI library that served as a reference for protocol implementation
-- **[DALI Lighting Protocol](https://jared.geek.nz/2025/06/dali-lighting-protocol/)** by Jared Sanson - Fantastic article explaining DALI protocol details
-- DALI protocol implementation based on DALI_Lib
-- Web interfaces use modern CSS with CSS variables
-- MQTT integration via PubSubClient library
-- Projects follow IEC 62386 DALI standard
+Both projects are built on the **esp32-base** modular architecture:
 
-## �📁 Projects
+- **Base files** (`base_*.cpp/h`): Core functionality (WiFi, Web, MQTT, OTA, Diagnostics) - shared, not modified
+- **Project files** (`project_*.cpp/h`): Project-specific customizations including DALI handlers
 
-### 🎛️ [ESP32 DALI Bridge](esp32_dali_bridge/)
+This architecture allows easy maintenance and consistent features across projects.
 
-A professional bridge between DALI and MQTT, acting as a DALI master/controller.
+```
+esp32_dali_bridge/              esp32_dali_ballast/
+├── esp32_dali_bridge.ino       ├── esp32_dali_ballast.ino
+│                               │
+│ ─── Configuration ───         │ ─── Configuration ───
+├── base_config.h               ├── base_config.h
+├── project_version.h           ├── project_version.h
+├── project_config.h            ├── project_config.h
+│                               │
+│ ─── Base Files (shared) ───   │ ─── Base Files (shared) ───
+├── base_wifi.cpp/h             ├── base_wifi.cpp/h
+├── base_web.cpp/h              ├── base_web.cpp/h
+├── base_mqtt.cpp/h             ├── base_mqtt.cpp/h
+├── base_diagnostics.cpp/h      ├── base_diagnostics.cpp/h
+├── base_ota.cpp/h              ├── base_ota.cpp/h
+├── base_logos.h                ├── base_logos.h
+│                               │
+│ ─── Project Files ───         │ ─── Project Files ───
+├── project_function.cpp/h      ├── project_function.cpp/h
+├── project_home.cpp/h          ├── project_home.cpp/h
+├── project_diagnostics.cpp/h   ├── project_diagnostics.cpp/h
+├── project_mqtt.cpp/h          ├── project_mqtt.cpp/h
+├── project_dali_handler.cpp/h  ├── project_ballast_handler.cpp/h
+├── project_dali_protocol.h     ├── project_ballast_state.h
+└── project_dali_lib.cpp/h      ├── project_dali_protocol.h
+                                └── project_dali_lib.cpp/h
+```
 
-**Key Features:**
+## 📁 Projects
+
+### 🎛️ ESP32 DALI Bridge (`esp32_dali_bridge/`)
+
+A DALI master/controller that bridges DALI and MQTT.
+
+**Features:**
 - DALI bus communication and device control
 - Bus monitoring (detects external DALI masters)
-- Passive device discovery (learns devices from bus traffic)
-- MQTT integration with full topic support
-- Device scanning, commissioning, and command queue
-- Web interface with modern UI
+- Passive device discovery from bus traffic
+- MQTT integration with command/monitor/scan topics
+- Device scanning and commissioning
+- Command queue with priority and retry
+- Modern web interface with dark/light themes
 - OTA updates and diagnostics
 
-**Use Cases:** Control DALI lighting via MQTT, monitor DALI bus activity, integrate with Home Assistant
+**MQTT Topics:**
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `home/dali/command` | Subscribe | Send DALI commands (JSON) |
+| `home/dali/monitor` | Publish | All bus activity with source |
+| `home/dali/status` | Publish | Device online status |
+| `home/dali/scan/trigger` | Subscribe | Trigger bus scan |
+| `home/dali/scan/result` | Publish | Scan results |
+| `home/dali/commission/trigger` | Subscribe | Start commissioning |
+| `home/dali/commission/progress` | Publish | Commissioning progress |
 
-📖 **[Full Documentation →](esp32_dali_bridge/README.md)**
+**Command Example:**
+```json
+{"command": "set_brightness", "address": 0, "level": 128}
+```
 
 ---
 
-### 💡 [ESP32 DALI Ballast](esp32_dali_ballast/)
+### 💡 ESP32 DALI Ballast (`esp32_dali_ballast/`)
 
-A virtual DALI ballast emulator that appears on the bus as a controllable DALI slave device.
+A virtual DALI ballast emulator (DALI slave device).
 
-**Key Features:**
+**Features:**
 - Emulates DALI ballast behavior
-- DALI-2 compliant immediate responses (2.91-22ms)
-- DT8 color support (RGB, RGBW, Color Temperature)
-- Configurable address (0-63)
-- MQTT state publishing
+- DALI-2 compliant responses (2.91-22ms timing)
+- DT0 (Normal), DT6 (LED), DT8 (Color) device types
+- RGB, RGBW, Color Temperature support (DT8)
+- Configurable address (0-63) or unaddressed
+- Automatic commissioning support
 - Fade and scene support
+- MQTT state publishing
 - Web interface for configuration
 
-**Use Cases:** Test DALI controllers without physical ballasts, monitor DALI commands, simulate multiple devices
-
-📖 **[Full Documentation →](esp32_dali_ballast/README.md)**
-
----
-
-### 📡 [ESP32 WiFi Test](esp32_wifi_test/)
-
-A simple WiFi configuration and web server test project.
-
-**Key Features:**
-- WiFi management (STA/AP modes)
-- Basic web interface
-- OTA updates
-- Theme system
-- Persistent storage
-
-**Use Cases:** WiFi testing, template for ESP32 web projects, learning example
-
-📖 **[Full Documentation →](esp32_wifi_test/README.md)**
+**MQTT Topics:**
+| Topic | Direction | Description |
+|-------|-----------|-------------|
+| `home/dali/ballast/state` | Publish | Current ballast state |
+| `home/dali/ballast/config` | Publish | Ballast configuration |
+| `home/dali/ballast/command` | Publish | Received DALI commands |
+| `home/dali/ballast/status` | Publish | Online status (LWT) |
 
 ---
 
 ## 🔧 Hardware
 
-All projects use the same hardware configuration:
+### Recommended Setup
+- [Waveshare ESP32-S3-Pico](https://www.waveshare.com/esp32-s3-pico.htm)
+- [Waveshare Pico-DALI2](https://www.waveshare.com/pico-dali2.htm) transceiver
 
-**Recommended:**
-- [Waveshare ESP32-S3-Pico](https://www.waveshare.com/esp32-s3-pico.htm) - ESP32-S3 board
-- [Waveshare Pico-DALI2](https://www.waveshare.com/pico-dali2.htm) - DALI transceiver (for DALI projects)
+### Pin Connections
+| Pin | Function |
+|-----|----------|
+| GPIO17 | DALI TX |
+| GPIO14 | DALI RX |
+| GPIO21 | WS2812 LED (Ballast only) |
 
-**Connections:**
-- DALI TX: GPIO17
-- DALI RX: GPIO14
-- Power: 5V USB
+### Supported ESP32 Variants
 
-## 🚀 Quick Start
+The code is compatible with all ESP32 variants. Adjust the build command and pin configuration as needed.
 
-### Prerequisites
+| Variant | FQBN | Default LED Pin | Flash Size |
+|---------|------|-----------------|------------|
+| **ESP32** | `esp32:esp32:esp32` | GPIO 2 | 4MB |
+| **ESP32-S2** | `esp32:esp32:esp32s2` | GPIO 18 | 4MB |
+| **ESP32-S3** | `esp32:esp32:esp32s3` | GPIO 48 (RGB) | 8MB+ |
+| **ESP32-C3** | `esp32:esp32:esp32c3` | GPIO 8 | 4MB |
+| **ESP32-C6** | `esp32:esp32:esp32c6` | GPIO 8 | 4MB |
 
+### Detecting Your Board
+
+Connect your ESP32 via USB and run:
 ```bash
-# Install Arduino CLI
-brew install arduino-cli  # macOS
-# or: curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+esptool chip_id
+```
+
+Example output:
+```
+Chip type:          ESP32-S3 (revision v0.2)
+Features:           WiFi, BLE, Embedded Flash 8MB
+```
+
+---
+
+## � Requirements
+
+### Software
+- [Arduino IDE](https://www.arduino.cc/en/software) 2.x or [Arduino CLI](https://arduino.github.io/arduino-cli/)
+- ESP32 Board Support Package (v3.x)
+- PubSubClient library
+- ArduinoJson library
+
+### Installing Dependencies
+
+**Arduino IDE:**
+1. File → Preferences → Additional Board Manager URLs:
+   ```
+   https://espressif.github.io/arduino-esp32/package_esp32_index.json
+   ```
+2. Tools → Board → Boards Manager → Search "esp32" → Install
+3. Sketch → Include Library → Manage Libraries:
+   - Search "PubSubClient" → Install
+   - Search "ArduinoJson" → Install
+
+**Arduino CLI:**
+```bash
+# Install Arduino CLI (macOS)
+brew install arduino-cli
+
+# Or download from https://arduino.github.io/arduino-cli/
+
+# Initialize config
+arduino-cli config init
 
 # Install ESP32 core
-arduino-cli config init
 arduino-cli core update-index
-arduino-cli core install esp32:esp32@3.3.5
+arduino-cli core install esp32:esp32
 
-# Install required libraries
+# Install libraries
 arduino-cli lib install "PubSubClient@2.8"
 arduino-cli lib install "ArduinoJson@7.4.2"
 ```
 
-### Build & Flash
+---
 
+## 🔨 Building
+
+All commands should be run from the repository root folder.
+
+We use the `min_spiffs` partition scheme which provides 1.875 MB per app partition (vs 1.25 MB default) while keeping OTA functionality.
+
+### DALI Bridge
+
+**ESP32-S3 (recommended):**
 ```bash
-# Navigate to project directory
-cd <project_name>
-
-# Build
-arduino-cli compile --fqbn esp32:esp32:esp32s3 --output-dir build .
-
-# Flash to ESP32
-esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 460800 \
-  write_flash 0x0 build/<project_name>.ino.merged.bin
+arduino-cli compile -v --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_bridge" \
+  --output-dir ./build esp32_dali_bridge/
 ```
+
+**ESP32:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_bridge" \
+  --output-dir ./build esp32_dali_bridge/
+```
+
+**ESP32-C3:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32c3:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_bridge" \
+  --output-dir ./build esp32_dali_bridge/
+```
+
+**ESP32-C6:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32c6:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_bridge" \
+  --output-dir ./build esp32_dali_bridge/
+```
+
+**ESP32-S2:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_bridge" \
+  --output-dir ./build esp32_dali_bridge/
+```
+
+### DALI Ballast
+
+**ESP32-S3 (recommended):**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_ballast" \
+  --output-dir ./build esp32_dali_ballast/
+```
+
+**ESP32:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_ballast" \
+  --output-dir ./build esp32_dali_ballast/
+```
+
+**ESP32-C3:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32c3:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_ballast" \
+  --output-dir ./build esp32_dali_ballast/
+```
+
+**ESP32-C6:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32c6:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_ballast" \
+  --output-dir ./build esp32_dali_ballast/
+```
+
+**ESP32-S2:**
+```bash
+arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
+  --build-property "build.project_name=esp32_dali_ballast" \
+  --output-dir ./build esp32_dali_ballast/
+```
+
+### Build Output
+
+After building, you'll find these files in the output directory:
+- `esp32_dali_bridge.bin` / `esp32_dali_ballast.bin` - Main firmware
+- `esp32_dali_bridge.bootloader.bin` / `esp32_dali_ballast.bootloader.bin` - Bootloader
+- `esp32_dali_bridge.partitions.bin` / `esp32_dali_ballast.partitions.bin` - Partition table
+- `esp32_dali_bridge.merged.bin` / `esp32_dali_ballast.merged.bin` - Combined binary for first flash
+
+### Arduino IDE
+
+1. Open `esp32_dali_bridge/esp32_dali_bridge.ino` or `esp32_dali_ballast/esp32_dali_ballast.ino`
+2. Select board: Tools → Board → ESP32 Arduino → (your board variant)
+3. Select partition scheme: Tools → Partition Scheme → **Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)**
+4. Sketch → Export Compiled Binary
+
+---
+
+## 📤 Flashing
+
+Replace `/dev/ttyUSB0` with your actual port:
+- **macOS**: `/dev/cu.usbserial-*` or `/dev/cu.SLAB_USBtoUART`
+- **Windows**: `COM3`, `COM4`, etc.
+- **Linux**: `/dev/ttyUSB0`, `/dev/ttyACM0`
+
+### First-time Flash (full)
+
+Uses the merged binary which contains bootloader, partition table, and firmware.
+
+**DALI Bridge - ESP32-S3:**
+```bash
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  --before default_reset --after hard_reset write_flash \
+  -z --flash_mode dio --flash_freq 80m --flash_size 8MB \
+  0x0 ./build/esp32_dali_bridge.merged.bin
+```
+
+**DALI Bridge - ESP32:**
+```bash
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 \
+  --before default_reset --after hard_reset write_flash \
+  -z --flash_mode dio --flash_freq 80m --flash_size 4MB \
+  0x0 ./build/esp32_dali_bridge.merged.bin
+```
+
+**DALI Ballast - ESP32-S3:**
+```bash
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  --before default_reset --after hard_reset write_flash \
+  -z --flash_mode dio --flash_freq 80m --flash_size 8MB \
+  0x0 ./build/esp32_dali_ballast.merged.bin
+```
+
+**DALI Ballast - ESP32:**
+```bash
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 \
+  --before default_reset --after hard_reset write_flash \
+  -z --flash_mode dio --flash_freq 80m --flash_size 4MB \
+  0x0 ./build/esp32_dali_ballast.merged.bin
+```
+
+### Firmware Update (app only)
+
+For subsequent updates, flash only the app (~1.5MB, faster):
+
+**DALI Bridge:**
+```bash
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  write_flash 0x10000 ./build/esp32_dali_bridge.bin
+```
+
+**DALI Ballast:**
+```bash
+esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
+  write_flash 0x10000 ./build/esp32_dali_ballast.bin
+```
+
+### Troubleshooting Flash Issues
+
+If flashing fails:
+
+1. **Lower the baud rate** - Try `--baud 230400` or `--baud 115200`
+2. **Replace the USB cable** - Use a quality data cable, not a charge-only cable
+3. **Hold BOOT button** - On some boards, hold BOOT while flashing starts
+4. **Check the port** - Ensure correct port is specified
+5. **Install drivers** - Some boards need CH340 or CP2102 USB drivers
+
+---
+
+## 🚀 First-time Setup
+
+1. Connect ESP32 via USB
+2. Build and flash using commands above
+3. On first boot, the device creates an AP:
+   - **Bridge:** `SCEPI-DALI-BRIDGE-XXXXXX`
+   - **Ballast:** `SCEPI-DALI-BALLAST-XXXXXX`
+4. Connect to the AP (password: `daliconfig`)
+5. Navigate to `http://192.168.4.1` to configure WiFi
+
+### OTA Updates (after initial setup)
+
+1. Navigate to `http://<device-ip>/update`
+2. Select the compiled `.bin` file
+3. Click "Upload & Update"
+4. Wait for completion and automatic reboot
+
+---
+
+## 🌐 Web Interface
+
+| Page | URL | Description |
+|------|-----|-------------|
+| Home | `/` | System status overview |
+| Network | `/network` | WiFi and web auth settings |
+| MQTT | `/mqtt` | MQTT broker configuration |
+| DALI Control / Ballast Config | `/dali` or `/ballast` | Project-specific controls |
+| Diagnostics | `/diagnostics` | System info and stats |
+| Update | `/update` | Firmware OTA update |
+
+---
 
 ## 📊 Project Comparison
 
-| Feature | WiFi Test | DALI Bridge | DALI Ballast |
-|---------|-----------|-------------|--------------|
-| **Role** | Template | DALI Master | DALI Slave |
-| **DALI Control** | ❌ | ✅ Send commands | ❌ |
-| **DALI Response** | ❌ | ❌ | ✅ Respond to queries |
-| **Bus Monitoring** | ❌ | ✅ | ✅ |
-| **MQTT** | ❌ | ✅ Pub/Sub | ✅ Publish only |
-| **Device Scanning** | ❌ | ✅ | ❌ |
-| **Configurable Address** | ❌ | ❌ | ✅ (0-63) |
-| **Web Interface** | Basic | Full control | Configuration |
-| **OTA Updates** | ✅ | ✅ | ✅ |
-| **Use Case** | Testing | Control DALI | Emulate DALI device |
+| Feature | DALI Bridge | DALI Ballast |
+|---------|-------------|--------------|
+| **Role** | DALI Master | DALI Slave |
+| **Sends Commands** | ✅ | ❌ |
+| **Responds to Queries** | ❌ | ✅ |
+| **Bus Monitoring** | ✅ | ✅ |
+| **MQTT** | Pub/Sub | Publish only |
+| **Device Scanning** | ✅ | ❌ |
+| **Commissioning** | ✅ Initiates | ✅ Responds |
+| **Configurable Address** | N/A | ✅ (0-63) |
+
+---
 
 ## 🎯 Typical Setup
 
 ```
 ┌─────────────────┐
 │  MQTT Broker    │
-│  (Mosquitto)    │
 └────────┬────────┘
          │
     ┌────┴────┐
@@ -157,61 +416,68 @@ esptool.py --chip esp32s3 --port /dev/ttyACM0 --baud 460800 \
 │      │  │Assist│
 └───┬──┘  └──────┘
     │
-DALI Bus
-    │
-┌───┴────┬────────┬────────┐
-│        │        │        │
-▼        ▼        ▼        ▼
-Ballast  Real     Real     Real
-(ESP32)  Ballast  Ballast  Ballast
+DALI Bus ════════════════════
+    │         │         │
+┌───▼───┐ ┌───▼───┐ ┌───▼───┐
+│Ballast│ │ Real  │ │ Real  │
+│(ESP32)│ │Ballast│ │Ballast│
+└───────┘ └───────┘ └───────┘
 ```
-
-**Bridge** sends commands to control all ballasts
-**Ballast** (ESP32) emulates a real DALI device for testing
-**Real Ballasts** are actual LED drivers/ballasts
-
-## 📚 Documentation
-
-### Project READMEs
-- [ESP32 DALI Bridge](esp32_dali_bridge/README.md) - Complete bridge documentation
-- [ESP32 DALI Ballast](esp32_dali_ballast/README.md) - Complete ballast documentation
-- [ESP32 WiFi Test](esp32_wifi_test/README.md) - WiFi test documentation
-
-## 🔒 Security Notes
-
-- Web interfaces use HTTP Basic Auth (not encrypted without HTTPS)
-- Credentials stored in NVS (plain text, not in source code)
-- No sensitive data in source code - credentials entered via web UI
-- Default AP passwords should be changed before deployment
-- Consider using VPN or isolated network for production
-
-## 📝 Version Information
-
-- **DALI Bridge:** v1.0.0
-- **DALI Ballast:** v1.0.0
-- **WiFi Test:** No formal versioning
-
-## 🤝 Contributing
-
-These are personal projects, but suggestions and bug reports are welcome.
-
-## 📄 License
-
-This project is licensed under **CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International).
-
-**You are free to:**
-- **Share** — copy and redistribute the material
-- **Adapt** — remix, transform, and build upon the material
-
-**Under the following terms:**
-- **Attribution** — You must give appropriate credit
-- **NonCommercial** — You may not use the material for commercial purposes
-- **ShareAlike** — If you remix or transform, you must distribute under the same license
-
-See [LICENSE](LICENSE) file for full details.
 
 ---
 
-**Built with ❤️ for home automation and lighting control**
+## 💻 Development Tips
+
+- Enable `DEBUG_SERIAL` in `base_config.h` for serial debug output
+- Use `mqttSubscribe()` and `mqttPublish()` helpers from `base_mqtt.h`
+- Implement `onMqttConnected()` to subscribe to your topics
+- Implement `onMqttMessage()` to handle incoming messages
+- Data is only saved on explicit user action (no periodic SPIFFS writes)
+
+### AI Coding Agent Guidelines
+
+When working with this codebase, AI coding agents **MUST** follow these rules:
+
+| File Pattern | Can Modify? | Can Create? |
+|--------------|-------------|-------------|
+| `base_*` | ❌ No | ❌ No |
+| `*.ino` | ❌ No (rename only) | N/A |
+| `project_*` | ✅ Yes | ✅ Yes |
+
+---
+
+## 🔒 Security
+
+- Web interface uses HTTP Basic Auth
+- Credentials stored in NVS (not in source code)
+- Default AP password: `daliconfig` - **change before deployment**
+- Consider VPN or isolated network for production
+
+---
+
+## 📝 Version
+
+- **DALI Bridge:** v1.0.1
+- **DALI Ballast:** v1.0.1
+
+---
+
+## 🙏 Acknowledgments
+
+- **[python-dali](https://github.com/sde1000/python-dali/)** - Protocol reference
+- **[DALI Lighting Protocol](https://jared.geek.nz/2025/06/dali-lighting-protocol/)** - Excellent documentation
+- Projects follow IEC 62386 DALI standard
+
+---
+
+## 📄 License
+
+**CC BY-NC-SA 4.0** (Creative Commons Attribution-NonCommercial-ShareAlike 4.0)
+
+- ✅ Share and adapt for non-commercial use
+- ✅ Attribution required
+- ✅ Share alike under same license
+
+---
 
 **© 2026 Scepi Consulting Kft.**
