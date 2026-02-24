@@ -10,6 +10,69 @@ ESP32-S3 based projects for DALI (Digital Addressable Lighting Interface) contro
 > **Created for internal use only.** Use and modify for non-commercial purposes at your own risk.
 > Contributions and bug reports are welcome!
 
+## 📥 Repository Setup
+
+### Cloning the Repository
+
+This repository uses **git submodules**. Clone with submodules:
+
+```bash
+git clone --recurse-submodules git@github.com:ScepiConsulting/esp32-dali.git
+cd esp32-dali
+```
+
+If you already cloned without submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Updating the Submodule
+
+To update `esp32-base` to the latest version from upstream:
+
+```bash
+# Fetch and update to latest commit on main branch
+git submodule update --remote esp32-base
+
+# Commit the submodule update
+git add esp32-base
+git commit -m "Update esp32-base to latest version"
+```
+
+To update to a specific tag or commit:
+
+```bash
+cd esp32-base
+git fetch --tags
+git checkout v1.2.0   # or a specific commit hash
+cd ..
+git add esp32-base
+git commit -m "Update esp32-base to v1.2.0"
+```
+
+### Submodule Structure
+
+The `esp32-base` directory is a git submodule containing shared base functionality. The `base_*` files and `.ino` files in each project folder are **symlinks** pointing to `esp32-base/src/`.
+
+```
+esp32-dali/
+├── esp32-base/                    # Git submodule (DO NOT MODIFY)
+│   └── src/
+│       ├── base_*.cpp/h           # Shared base files
+│       └── src.ino                # Main sketch template
+├── esp32_dali_bridge/
+│   ├── base_*.cpp/h → ../esp32-base/src/   # Symlinks
+│   ├── esp32_dali_bridge.ino → ../esp32-base/src/src.ino
+│   └── project_*.cpp/h            # Project-specific files
+└── esp32_dali_ballast/
+    ├── base_*.cpp/h → ../esp32-base/src/   # Symlinks
+    ├── esp32_dali_ballast.ino → ../esp32-base/src/src.ino
+    └── project_*.cpp/h            # Project-specific files
+```
+
+---
+
 ## 🏗️ Architecture
 
 Both projects are built on the **esp32-base** modular architecture:
@@ -193,7 +256,67 @@ All commands should be run from the repository root folder.
 
 We use the `min_spiffs` partition scheme which provides 1.875 MB per app partition (vs 1.25 MB default) while keeping OTA functionality.
 
-### DALI Bridge
+### Using Makefile (Recommended)
+
+The repository includes a `Makefile` that handles submodule reset and compilation.
+
+**⚠️ Important:** Before every build, the submodule is automatically reset to discard any accidental changes:
+```bash
+git submodule foreach git reset --hard HEAD
+git submodule foreach git checkout .
+```
+
+#### Quick Start
+
+```bash
+# Build both projects for ESP32-S3 (default)
+make
+
+# Build specific project
+make bridge
+make ballast
+
+# Build for different board
+make bridge BOARD=esp32c3
+make ballast BOARD=esp32
+
+# Flash to device
+make flash-bridge PORT=/dev/cu.usbserial-0001
+make flash-ballast PORT=/dev/cu.usbserial-0001
+
+# Flash app only (faster, for updates)
+make flash-bridge-app PORT=/dev/cu.usbserial-0001
+```
+
+#### Available Make Targets
+
+| Target | Description |
+|--------|-------------|
+| `make` or `make all` | Build both bridge and ballast |
+| `make bridge` | Build DALI Bridge only |
+| `make ballast` | Build DALI Ballast only |
+| `make flash-bridge` | Flash bridge (full, with bootloader) |
+| `make flash-ballast` | Flash ballast (full, with bootloader) |
+| `make flash-bridge-app` | Flash bridge app only (faster) |
+| `make flash-ballast-app` | Flash ballast app only (faster) |
+| `make submodule-reset` | Reset submodules to clean state |
+| `make clean` | Remove build artifacts |
+| `make help` | Show all options |
+
+#### Make Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BOARD` | `esp32s3` | Target: `esp32`, `esp32s2`, `esp32s3`, `esp32c3`, `esp32c6` |
+| `PORT` | `/dev/ttyUSB0` | Serial port for flashing |
+| `BUILD_DIR` | `./build` | Output directory |
+
+### Manual Build Commands
+
+<details>
+<summary>Click to expand manual arduino-cli commands</summary>
+
+#### DALI Bridge
 
 **ESP32-S3 (recommended):**
 ```bash
@@ -230,7 +353,7 @@ arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
   --output-dir ./build esp32_dali_bridge/
 ```
 
-### DALI Ballast
+#### DALI Ballast
 
 **ESP32-S3 (recommended):**
 ```bash
@@ -266,6 +389,8 @@ arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
   --build-property "build.project_name=esp32_dali_ballast" \
   --output-dir ./build esp32_dali_ballast/
 ```
+
+</details>
 
 ### Build Output
 
@@ -438,10 +563,40 @@ DALI Bus ════════════════════
 
 When working with this codebase, AI coding agents **MUST** follow these rules:
 
+#### ⛔ DO NOT MODIFY (Read-Only)
+
+These files are symlinks to the `esp32-base` submodule and must **NEVER** be modified:
+
+**In `esp32_dali_bridge/`:**
+- `base_config.h`, `base_diagnostics.cpp`, `base_diagnostics.h`, `base_logos.h`
+- `base_mqtt.cpp`, `base_mqtt.h`, `base_ota.cpp`, `base_ota.h`
+- `base_web.cpp`, `base_web.h`, `base_wifi.cpp`, `base_wifi.h`
+- `esp32_dali_bridge.ino`
+
+**In `esp32_dali_ballast/`:**
+- `base_config.h`, `base_diagnostics.cpp`, `base_diagnostics.h`, `base_logos.h`
+- `base_mqtt.cpp`, `base_mqtt.h`, `base_ota.cpp`, `base_ota.h`
+- `base_web.cpp`, `base_web.h`, `base_wifi.cpp`, `base_wifi.h`
+- `esp32_dali_ballast.ino`
+
+**In `esp32-base/` (entire submodule):**
+- Do not modify any files in this directory
+
+#### ✅ CAN MODIFY
+
+Only `project_*` files can be modified or created:
+- `project_config.h`, `project_version.h`
+- `project_function.cpp/h`, `project_home.cpp/h`
+- `project_diagnostics.cpp/h`, `project_mqtt.cpp/h`
+- `project_dali_*.cpp/h`, `project_ballast_*.cpp/h`
+
+#### Summary Table
+
 | File Pattern | Can Modify? | Can Create? |
 |--------------|-------------|-------------|
+| `esp32-base/*` | ❌ No | ❌ No |
 | `base_*` | ❌ No | ❌ No |
-| `*.ino` | ❌ No (rename only) | N/A |
+| `*.ino` | ❌ No | ❌ No |
 | `project_*` | ✅ Yes | ✅ Yes |
 
 ---
