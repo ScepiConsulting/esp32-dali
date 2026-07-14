@@ -12,64 +12,51 @@ ESP32-S3 based projects for DALI (Digital Addressable Lighting Interface) contro
 
 ## 📥 Repository Setup
 
-### Cloning the Repository
+### Cloning the Repositories
 
-This repository uses **git submodules**. Clone with submodules:
+The `esp32-base` framework is **no longer a git submodule**. It is consumed as a PlatformIO library from a **sibling checkout**, declared in `platformio.ini`:
+
+```ini
+lib_deps = symlink://../esp32-base
+```
+
+So both repositories must be cloned **side by side**:
 
 ```bash
-git clone --recurse-submodules git@github.com:ScepiConsulting/esp32-dali.git
+git clone git@github.com:ScepiConsulting/esp32-base.git
+git clone git@github.com:ScepiConsulting/esp32-dali.git
 cd esp32-dali
 ```
 
-If you already cloned without submodules:
+To update the base, simply pull in the sibling checkout:
 
 ```bash
-git submodule update --init --recursive
+cd ../esp32-base && git pull
 ```
 
-### Updating the Submodule
+There is no submodule to initialize, update, or reset before building.
 
-To update `esp32-base` to the latest version from upstream:
-
-```bash
-# Fetch and update to latest commit on main branch
-git submodule update --remote esp32-base
-
-# Commit the submodule update
-git add esp32-base
-git commit -m "Update esp32-base to latest version"
-```
-
-To update to a specific tag or commit:
-
-```bash
-cd esp32-base
-git fetch --tags
-git checkout v1.2.0   # or a specific commit hash
-cd ..
-git add esp32-base
-git commit -m "Update esp32-base to v1.2.0"
-```
-
-### Submodule Structure
-
-The `esp32-base` directory is a git submodule containing shared base functionality. The `base_*` files and `.ino` files in each project folder are **symlinks** pointing to `esp32-base/src/`.
+### Directory Layout
 
 ```
-esp32-dali/
-├── esp32-base/                    # Git submodule (DO NOT MODIFY)
+<workspace>/
+├── esp32-base/                    # Sibling checkout (DO NOT MODIFY)
 │   └── src/
-│       ├── base_*.cpp/h           # Shared base files
-│       └── src.ino                # Main sketch template
-├── esp32_dali_bridge/
-│   ├── base_*.cpp/h → ../esp32-base/src/   # Symlinks
-│   ├── esp32_dali_bridge.ino → ../esp32-base/src/src.ino
-│   └── project_*.cpp/h            # Project-specific files
-└── esp32_dali_ballast/
-    ├── base_*.cpp/h → ../esp32-base/src/   # Symlinks
-    ├── esp32_dali_ballast.ino → ../esp32-base/src/src.ino
-    └── project_*.cpp/h            # Project-specific files
+│       ├── base_api.h             # app* hooks the projects implement
+│       ├── base_app.cpp/h         # Owns setup() / loop()
+│       └── base_*.cpp/h           # WiFi, Web, MQTT, OTA, Diagnostics, i18n
+└── esp32-dali/
+    ├── platformio.ini             # Two envs: bridge + ballast
+    ├── Makefile                   # Thin wrapper around `pio`
+    ├── esp32_dali_bridge/
+    │   ├── main.cpp               # Calls baseSetup() / baseLoop()
+    │   └── project_*.cpp/h        # Project-specific files
+    └── esp32_dali_ballast/
+        ├── main.cpp               # Calls baseSetup() / baseLoop()
+        └── project_*.cpp/h        # Project-specific files
 ```
+
+No symlinks, no `.ino` files: each product folder contains a plain `main.cpp` plus its own `project_*` sources.
 
 ---
 
@@ -77,32 +64,52 @@ esp32-dali/
 
 Both projects are built on the **esp32-base** modular architecture:
 
-- **Base files** (`base_*.cpp/h`): Core functionality (WiFi, Web, MQTT, OTA, Diagnostics) - shared, not modified
+- **Base library** (`esp32-base`, `base_*.cpp/h`): Core functionality (WiFi, Web, MQTT, OTA, Diagnostics, i18n) - shared, not modified. Pulled in by PlatformIO via `lib_deps`.
 - **Project files** (`project_*.cpp/h`): Project-specific customizations including DALI handlers
 
 This architecture allows easy maintenance and consistent features across projects.
 
+### Entry Point
+
+The base owns `setup()` and `loop()`. Each product's `main.cpp` is just:
+
+```cpp
+#include "base_app.h"
+
+void setup() { baseSetup(); }
+void loop()  { baseLoop(); }
+```
+
+### Hooks
+
+Projects extend the base through the `app*` hooks declared in the base's `src/base_api.h`:
+
+| Hook | Purpose |
+|------|---------|
+| `appInit()` | Project initialization |
+| `appLoop()` | Project main loop work |
+| `appHomeHTML()` | Project section on the home page |
+| `appDiagnosticSections()` | Extra diagnostics UI sections |
+| `appDiagnosticsJSON()` | Extra diagnostics JSON fields |
+| `appMqttConnected()` | Subscribe to project topics |
+| `appMqttMessage()` | Handle incoming MQTT messages |
+| `appMqttTopicsHTML()` | Document project topics in the UI |
+| `appMqttFilter*` (trio, optional) | Optional MQTT filtering |
+
+Every hook has a **weak default** in the base, so a project only implements the ones it needs.
+
 ```
 esp32_dali_bridge/              esp32_dali_ballast/
-├── esp32_dali_bridge.ino       ├── esp32_dali_ballast.ino
+├── main.cpp                    ├── main.cpp
 │                               │
 │ ─── Configuration ───         │ ─── Configuration ───
-├── base_config.h               ├── base_config.h
 ├── project_version.h           ├── project_version.h
 ├── project_config.h            ├── project_config.h
 │                               │
-│ ─── Base Files (shared) ───   │ ─── Base Files (shared) ───
-├── base_wifi.cpp/h             ├── base_wifi.cpp/h
-├── base_web.cpp/h              ├── base_web.cpp/h
-├── base_mqtt.cpp/h             ├── base_mqtt.cpp/h
-├── base_diagnostics.cpp/h      ├── base_diagnostics.cpp/h
-├── base_ota.cpp/h              ├── base_ota.cpp/h
-├── base_logos.h                ├── base_logos.h
-│                               │
 │ ─── Project Files ───         │ ─── Project Files ───
 ├── project_function.cpp/h      ├── project_function.cpp/h
-├── project_home.cpp/h          ├── project_home.cpp/h
-├── project_diagnostics.cpp/h   ├── project_diagnostics.cpp/h
+├── project_home.cpp            ├── project_home.cpp
+├── project_diagnostics.cpp     ├── project_diagnostics.cpp
 ├── project_mqtt.cpp/h          ├── project_mqtt.cpp/h
 ├── project_dali_handler.cpp/h  ├── project_ballast_handler.cpp/h
 ├── project_dali_protocol.h     ├── project_ballast_state.h
@@ -182,17 +189,18 @@ A virtual DALI ballast emulator (DALI slave device).
 | GPIO14 | DALI RX |
 | GPIO21 | WS2812 LED (Ballast only) |
 
-### Supported ESP32 Variants
+### Target Board
 
-The code is compatible with all ESP32 variants. Adjust the build command and pin configuration as needed.
+Both PlatformIO environments build for the **ESP32-S3**:
 
-| Variant | FQBN | Default LED Pin | Flash Size |
-|---------|------|-----------------|------------|
-| **ESP32** | `esp32:esp32:esp32` | GPIO 2 | 4MB |
-| **ESP32-S2** | `esp32:esp32:esp32s2` | GPIO 18 | 4MB |
-| **ESP32-S3** | `esp32:esp32:esp32s3` | GPIO 48 (RGB) | 8MB+ |
-| **ESP32-C3** | `esp32:esp32:esp32c3` | GPIO 8 | 4MB |
-| **ESP32-C6** | `esp32:esp32:esp32c6` | GPIO 8 | 4MB |
+| Setting | Value |
+|---------|-------|
+| `board` | `esp32-s3-devkitc-1` |
+| Flash size | 4MB |
+| Partitions | `min_spiffs.csv` |
+| `monitor_speed` | 115200 |
+
+The code itself is portable to other ESP32 variants, but that requires changing the `board` in `platformio.ini` and adjusting the pin configuration.
 
 ### Detecting Your Board
 
@@ -212,40 +220,19 @@ Features:           WiFi, BLE, Embedded Flash 8MB
 ## � Requirements
 
 ### Software
-- [Arduino IDE](https://www.arduino.cc/en/software) 2.x or [Arduino CLI](https://arduino.github.io/arduino-cli/)
-- ESP32 Board Support Package (v3.x)
-- PubSubClient library
-- ArduinoJson library
+- [PlatformIO](https://platformio.org/) (`pio` CLI, or the PlatformIO IDE extension)
+- The `esp32-base` repository, cloned as a **sibling directory** next to `esp32-dali`
 
-### Installing Dependencies
+Everything else - the Espressif32 platform, the Arduino framework, PubSubClient and ArduinoJson - is declared in `platformio.ini` and resolved automatically by PlatformIO on the first build. There is no manual library or core installation step.
 
-**Arduino IDE:**
-1. File → Preferences → Additional Board Manager URLs:
-   ```
-   https://espressif.github.io/arduino-esp32/package_esp32_index.json
-   ```
-2. Tools → Board → Boards Manager → Search "esp32" → Install
-3. Sketch → Include Library → Manage Libraries:
-   - Search "PubSubClient" → Install
-   - Search "ArduinoJson" → Install
+### Installing PlatformIO
 
-**Arduino CLI:**
 ```bash
-# Install Arduino CLI (macOS)
-brew install arduino-cli
+# macOS / Linux
+brew install platformio
 
-# Or download from https://arduino.github.io/arduino-cli/
-
-# Initialize config
-arduino-cli config init
-
-# Install ESP32 core
-arduino-cli core update-index
-arduino-cli core install esp32:esp32
-
-# Install libraries
-arduino-cli lib install "PubSubClient@2.8"
-arduino-cli lib install "ArduinoJson@7.4.2"
+# Or via pip
+pip install -U platformio
 ```
 
 ---
@@ -256,156 +243,58 @@ All commands should be run from the repository root folder.
 
 We use the `min_spiffs` partition scheme which provides 1.875 MB per app partition (vs 1.25 MB default) while keeping OTA functionality.
 
-### Using Makefile (Recommended)
+### Project Layout
 
-The repository includes a `Makefile` that handles submodule reset and compilation.
+`platformio.ini` defines **two environments in a single project**. `src_dir` is the repository root, and each environment compiles only its own product folder via `build_src_filter`:
 
-**⚠️ Important:** Before every build, the submodule is automatically reset to discard any accidental changes:
+| Environment | Product |
+|-------------|---------|
+| `bridge` | DALI Bridge (`esp32_dali_bridge/`) |
+| `ballast` | DALI Ballast (`esp32_dali_ballast/`) |
+
+### Using PlatformIO (Recommended)
+
 ```bash
-git submodule foreach git reset --hard HEAD
-git submodule foreach git checkout .
+# Build both products
+pio run
+
+# Build a single product
+pio run -e bridge
+pio run -e ballast
+
+# Build + upload over serial
+pio run -e bridge -t upload --upload-port /dev/cu.usbserial-0001
+
+# Serial monitor (115200 baud)
+pio device monitor
 ```
 
-#### Quick Start
+### Using the Makefile
 
-```bash
-# Build both projects for ESP32-S3 (default)
-make
-
-# Build specific project
-make bridge
-make ballast
-
-# Build for different board
-make bridge BOARD=esp32c3
-make ballast BOARD=esp32
-
-# Flash to device
-make flash-bridge PORT=/dev/cu.usbserial-0001
-make flash-ballast PORT=/dev/cu.usbserial-0001
-
-# Flash app only (faster, for updates)
-make flash-bridge-app PORT=/dev/cu.usbserial-0001
-```
-
-#### Available Make Targets
+The `Makefile` is now a thin wrapper that forwards to `pio`, so the familiar targets keep working:
 
 | Target | Description |
 |--------|-------------|
 | `make` or `make all` | Build both bridge and ballast |
 | `make bridge` | Build DALI Bridge only |
 | `make ballast` | Build DALI Ballast only |
-| `make flash-bridge` | Flash bridge (full, with bootloader) |
-| `make flash-ballast` | Flash ballast (full, with bootloader) |
-| `make flash-bridge-app` | Flash bridge app only (faster) |
-| `make flash-ballast-app` | Flash ballast app only (faster) |
-| `make submodule-reset` | Reset submodules to clean state |
+| `make flash-bridge PORT=...` | Build + upload the bridge |
+| `make flash-ballast PORT=...` | Build + upload the ballast |
+| `make monitor-bridge PORT=...` | Serial monitor |
+| `make monitor-ballast PORT=...` | Serial monitor |
 | `make clean` | Remove build artifacts |
 | `make help` | Show all options |
 
-#### Make Variables
-
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BOARD` | `esp32s3` | Target: `esp32`, `esp32s2`, `esp32s3`, `esp32c3`, `esp32c6` |
-| `PORT` | `/dev/ttyUSB0` | Serial port for flashing |
-| `BUILD_DIR` | `./build` | Output directory |
-
-### Manual Build Commands
-
-<details>
-<summary>Click to expand manual arduino-cli commands</summary>
-
-#### DALI Bridge
-
-**ESP32-S3 (recommended):**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_bridge" \
-  --output-dir ./build esp32_dali_bridge/
-```
-
-**ESP32:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_bridge" \
-  --output-dir ./build esp32_dali_bridge/
-```
-
-**ESP32-C3:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32c3:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_bridge" \
-  --output-dir ./build esp32_dali_bridge/
-```
-
-**ESP32-C6:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32c6:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_bridge" \
-  --output-dir ./build esp32_dali_bridge/
-```
-
-**ESP32-S2:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_bridge" \
-  --output-dir ./build esp32_dali_bridge/
-```
-
-#### DALI Ballast
-
-**ESP32-S3 (recommended):**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32s3:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_ballast" \
-  --output-dir ./build esp32_dali_ballast/
-```
-
-**ESP32:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_ballast" \
-  --output-dir ./build esp32_dali_ballast/
-```
-
-**ESP32-C3:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32c3:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_ballast" \
-  --output-dir ./build esp32_dali_ballast/
-```
-
-**ESP32-C6:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32c6:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_ballast" \
-  --output-dir ./build esp32_dali_ballast/
-```
-
-**ESP32-S2:**
-```bash
-arduino-cli compile -v --fqbn esp32:esp32:esp32s2:PartitionScheme=min_spiffs \
-  --build-property "build.project_name=esp32_dali_ballast" \
-  --output-dir ./build esp32_dali_ballast/
-```
-
-</details>
+| `PORT` | `/dev/ttyUSB0` | Serial port for flashing / monitoring |
 
 ### Build Output
 
-After building, you'll find these files in the output directory:
-- `esp32_dali_bridge.bin` / `esp32_dali_ballast.bin` - Main firmware
-- `esp32_dali_bridge.bootloader.bin` / `esp32_dali_ballast.bootloader.bin` - Bootloader
-- `esp32_dali_bridge.partitions.bin` / `esp32_dali_ballast.partitions.bin` - Partition table
-- `esp32_dali_bridge.merged.bin` / `esp32_dali_ballast.merged.bin` - Combined binary for first flash
-
-### Arduino IDE
-
-1. Open `esp32_dali_bridge/esp32_dali_bridge.ino` or `esp32_dali_ballast/esp32_dali_ballast.ino`
-2. Select board: Tools → Board → ESP32 Arduino → (your board variant)
-3. Select partition scheme: Tools → Partition Scheme → **Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)**
-4. Sketch → Export Compiled Binary
+PlatformIO writes each environment's artifacts to `.pio/build/<env>/`:
+- `.pio/build/bridge/firmware.bin` - DALI Bridge firmware (also used for OTA)
+- `.pio/build/ballast/firmware.bin` - DALI Ballast firmware (also used for OTA)
+- `bootloader.bin` / `partitions.bin` - Bootloader and partition table
 
 ---
 
@@ -416,63 +305,35 @@ Replace `/dev/ttyUSB0` with your actual port:
 - **Windows**: `COM3`, `COM4`, etc.
 - **Linux**: `/dev/ttyUSB0`, `/dev/ttyACM0`
 
-### First-time Flash (full)
+### Serial Flash
 
-Uses the merged binary which contains bootloader, partition table, and firmware.
-
-**DALI Bridge - ESP32-S3:**
-```bash
-esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-  --before default_reset --after hard_reset write_flash \
-  -z --flash_mode dio --flash_freq 80m --flash_size 8MB \
-  0x0 ./build/esp32_dali_bridge.merged.bin
-```
-
-**DALI Bridge - ESP32:**
-```bash
-esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 \
-  --before default_reset --after hard_reset write_flash \
-  -z --flash_mode dio --flash_freq 80m --flash_size 4MB \
-  0x0 ./build/esp32_dali_bridge.merged.bin
-```
-
-**DALI Ballast - ESP32-S3:**
-```bash
-esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-  --before default_reset --after hard_reset write_flash \
-  -z --flash_mode dio --flash_freq 80m --flash_size 8MB \
-  0x0 ./build/esp32_dali_ballast.merged.bin
-```
-
-**DALI Ballast - ESP32:**
-```bash
-esptool --chip esp32 --port /dev/ttyUSB0 --baud 460800 \
-  --before default_reset --after hard_reset write_flash \
-  -z --flash_mode dio --flash_freq 80m --flash_size 4MB \
-  0x0 ./build/esp32_dali_ballast.merged.bin
-```
-
-### Firmware Update (app only)
-
-For subsequent updates, flash only the app (~1.5MB, faster):
+PlatformIO builds and uploads (bootloader, partition table and firmware) in one step:
 
 **DALI Bridge:**
 ```bash
-esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-  write_flash 0x10000 ./build/esp32_dali_bridge.bin
+pio run -e bridge -t upload --upload-port /dev/ttyUSB0
+# or: make flash-bridge PORT=/dev/ttyUSB0
 ```
 
 **DALI Ballast:**
 ```bash
-esptool --chip esp32s3 --port /dev/ttyUSB0 --baud 460800 \
-  write_flash 0x10000 ./build/esp32_dali_ballast.bin
+pio run -e ballast -t upload --upload-port /dev/ttyUSB0
+# or: make flash-ballast PORT=/dev/ttyUSB0
 ```
+
+If `--upload-port` is omitted, PlatformIO auto-detects the port.
+
+### Firmware Update (app only)
+
+For subsequent updates, use the OTA web interface (see below) with the built firmware:
+- `.pio/build/bridge/firmware.bin`
+- `.pio/build/ballast/firmware.bin`
 
 ### Troubleshooting Flash Issues
 
 If flashing fails:
 
-1. **Lower the baud rate** - Try `--baud 230400` or `--baud 115200`
+1. **Lower the baud rate** - Set `upload_speed = 115200` in `platformio.ini`
 2. **Replace the USB cable** - Use a quality data cable, not a charge-only cable
 3. **Hold BOOT button** - On some boards, hold BOOT while flashing starts
 4. **Check the port** - Ensure correct port is specified
@@ -509,6 +370,10 @@ If flashing fails:
 | DALI Control / Ballast Config | `/dali` or `/ballast` | Project-specific controls |
 | Diagnostics | `/diagnostics` | System info and stats |
 | Update | `/update` | Firmware OTA update |
+
+### 🌍 Language
+
+The web interface is **bilingual**: **Hungarian is the default**, English can be switched from the header, and the choice is persisted in NVS. UI strings are wrapped with `tr("magyar", "english")`. Serial/debug logs remain English only.
 
 ---
 
@@ -553,10 +418,12 @@ DALI Bus ════════════════════
 
 ## 💻 Development Tips
 
-- Enable `DEBUG_SERIAL` in `base_config.h` for serial debug output
+- Enable `DEBUG_SERIAL` in the base's `base_config.h` for serial debug output
 - Use `mqttSubscribe()` and `mqttPublish()` helpers from `base_mqtt.h`
-- Implement `onMqttConnected()` to subscribe to your topics
-- Implement `onMqttMessage()` to handle incoming messages
+- Implement `appMqttConnected()` to subscribe to your topics
+- Implement `appMqttMessage()` to handle incoming messages
+- All hooks (`appInit`, `appLoop`, `appHomeHTML`, ...) are declared in the base's `src/base_api.h` and have weak defaults - implement only what you need
+- Wrap user-facing UI strings with `tr("magyar", "english")`; keep serial logs English
 - Data is only saved on explicit user action (no periodic SPIFFS writes)
 
 ### AI Coding Agent Guidelines
@@ -565,38 +432,25 @@ When working with this codebase, AI coding agents **MUST** follow these rules:
 
 #### ⛔ DO NOT MODIFY (Read-Only)
 
-These files are symlinks to the `esp32-base` submodule and must **NEVER** be modified:
+The `esp32-base` sibling checkout is a **shared library** consumed via `lib_deps`. Do not modify anything inside it (`base_*.cpp/h`, `base_api.h`, `base_app.cpp/h`, ...) from this repository. Changes to the base belong in the `esp32-base` repository.
 
-**In `esp32_dali_bridge/`:**
-- `base_config.h`, `base_diagnostics.cpp`, `base_diagnostics.h`, `base_logos.h`
-- `base_mqtt.cpp`, `base_mqtt.h`, `base_ota.cpp`, `base_ota.h`
-- `base_web.cpp`, `base_web.h`, `base_wifi.cpp`, `base_wifi.h`
-- `esp32_dali_bridge.ino`
-
-**In `esp32_dali_ballast/`:**
-- `base_config.h`, `base_diagnostics.cpp`, `base_diagnostics.h`, `base_logos.h`
-- `base_mqtt.cpp`, `base_mqtt.h`, `base_ota.cpp`, `base_ota.h`
-- `base_web.cpp`, `base_web.h`, `base_wifi.cpp`, `base_wifi.h`
-- `esp32_dali_ballast.ino`
-
-**In `esp32-base/` (entire submodule):**
-- Do not modify any files in this directory
+The project folders no longer contain `base_*` symlinks or `.ino` files - only `main.cpp` and `project_*` sources.
 
 #### ✅ CAN MODIFY
 
-Only `project_*` files can be modified or created:
+Only `main.cpp` (rarely) and `project_*` files can be modified or created:
 - `project_config.h`, `project_version.h`
-- `project_function.cpp/h`, `project_home.cpp/h`
-- `project_diagnostics.cpp/h`, `project_mqtt.cpp/h`
+- `project_function.cpp/h`, `project_home.cpp`
+- `project_diagnostics.cpp`, `project_mqtt.cpp/h`
 - `project_dali_*.cpp/h`, `project_ballast_*.cpp/h`
 
 #### Summary Table
 
 | File Pattern | Can Modify? | Can Create? |
 |--------------|-------------|-------------|
-| `esp32-base/*` | ❌ No | ❌ No |
-| `base_*` | ❌ No | ❌ No |
-| `*.ino` | ❌ No | ❌ No |
+| `../esp32-base/*` | ❌ No | ❌ No |
+| `base_*` (in the base library) | ❌ No | ❌ No |
+| `main.cpp` | ⚠️ Rarely | ❌ No |
 | `project_*` | ✅ Yes | ✅ Yes |
 
 ---

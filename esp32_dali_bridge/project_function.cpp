@@ -1,14 +1,16 @@
 #include "project_function.h"
+#include "base_api.h"
 #include "project_config.h"
 #include "base_web.h"
 #include "base_mqtt.h"
+#include "base_i18n.h"
 #include "project_dali_handler.h"
 #include <ArduinoJson.h>
 
-void functionInit() {
+void appInit() {
   daliInit();
 
-  server.on(NAV_FUNCTION_URL, HTTP_GET, handleFunctionPage);
+  server.on(APP_NAV_URL, HTTP_GET, handleFunctionPage);
   server.on("/dali/send", HTTP_POST, handleDALISend);
   server.on("/dali/scan", HTTP_POST, handleDALIScan);
   server.on("/dali/commission", HTTP_POST, handleDALICommission);
@@ -17,7 +19,7 @@ void functionInit() {
   server.on("/api/passive_devices", handleAPIPassiveDevices);
 }
 
-void functionLoop() {
+void appLoop() {
   monitorDaliBus();
   processCommandQueue();
 }
@@ -25,86 +27,86 @@ void functionLoop() {
 void handleFunctionPage() {
   if (!checkAuth()) return;
 
-  String html = buildHTMLHeader(String(NAV_FUNCTION_NAME));
+  String html = buildHTMLHeader(String(APP_NAV_NAME));
 
-  html += "<div class=\"card\"><h1>DALI Control</h1>";
-  html += "<p class=\"subtitle\">Send commands to DALI devices</p>";
+  html += "<div class=\"card\"><h1>" + String(tr("DALI vezérlés", "DALI Control")) + "</h1>";
+  html += "<p class=\"subtitle\">" + String(tr("Parancsok küldése DALI eszközöknek", "Send commands to DALI devices")) + "</p>";
 
   html += "<form action=\"/dali/send\" method=\"POST\" id=\"dali-form\" onsubmit=\"sendDaliCommand(event)\">";
-  html += "<label for=\"address\">Device Address (0-63, 255=broadcast)</label>";
+  html += "<label for=\"address\">" + String(tr("Eszköz címe (0-63, 255=broadcast)", "Device Address (0-63, 255=broadcast)")) + "</label>";
   html += "<input type=\"number\" id=\"address\" name=\"address\" value=\"0\" min=\"0\" max=\"255\" required>";
 
-  html += "<label for=\"command\">Command</label>";
+  html += "<label for=\"command\">" + String(tr("Parancs", "Command")) + "</label>";
   html += "<select id=\"command\" name=\"command\" onchange=\"updateCommandForm()\" style=\"width:100%;padding:12px;border:2px solid var(--border-color);border-radius:8px;font-size:16px;margin-bottom:16px;background:var(--bg-primary);color:var(--text-primary);\">";
-  html += "<option value=\"set_brightness\">Set Brightness</option>";
-  html += "<option value=\"off\">Off</option>";
-  html += "<option value=\"max\">Max</option>";
-  html += "<option value=\"up\">Fade Up</option>";
-  html += "<option value=\"down\">Fade Down</option>";
-  html += "<option value=\"step_up\">Step Up</option>";
-  html += "<option value=\"step_down\">Step Down</option>";
-  html += "<option value=\"go_to_scene\">Go to Scene</option>";
-  html += "<option value=\"query_status\">Query Status</option>";
-  html += "<option value=\"query_actual_level\">Query Actual Level</option>";
+  html += "<option value=\"set_brightness\">" + String(tr("Fényerő beállítása", "Set Brightness")) + "</option>";
+  html += "<option value=\"off\">" + String(tr("Ki", "Off")) + "</option>";
+  html += "<option value=\"max\">" + String(tr("Maximum", "Max")) + "</option>";
+  html += "<option value=\"up\">" + String(tr("Fényerő fel (fade)", "Fade Up")) + "</option>";
+  html += "<option value=\"down\">" + String(tr("Fényerő le (fade)", "Fade Down")) + "</option>";
+  html += "<option value=\"step_up\">" + String(tr("Lépés fel", "Step Up")) + "</option>";
+  html += "<option value=\"step_down\">" + String(tr("Lépés le", "Step Down")) + "</option>";
+  html += "<option value=\"go_to_scene\">" + String(tr("Jelenet előhívása", "Go to Scene")) + "</option>";
+  html += "<option value=\"query_status\">" + String(tr("Státusz lekérdezése", "Query Status")) + "</option>";
+  html += "<option value=\"query_actual_level\">" + String(tr("Aktuális szint lekérdezése", "Query Actual Level")) + "</option>";
   html += "</select>";
 
   html += "<div id=\"level-control\">";
-  html += "<label for=\"level\">Brightness Level (0-254)</label>";
+  html += "<label for=\"level\">" + String(tr("Fényerő szint (0-254)", "Brightness Level (0-254)")) + "</label>";
   html += "<input type=\"range\" id=\"level\" name=\"level\" value=\"128\" min=\"0\" max=\"254\" oninput=\"document.getElementById('level-value').innerText=this.value\">";
-  html += "<p style=\"text-align:center;color:var(--text-secondary);margin-top:-8px;\">Level: <span id=\"level-value\">128</span></p>";
+  html += "<p style=\"text-align:center;color:var(--text-secondary);margin-top:-8px;\">" + String(tr("Szint: ", "Level: ")) + "<span id=\"level-value\">128</span></p>";
   html += "</div>";
 
   html += "<div id=\"scene-control\" style=\"display:none;\">";
-  html += "<label for=\"scene\">Scene Number (0-15)</label>";
+  html += "<label for=\"scene\">" + String(tr("Jelenet száma (0-15)", "Scene Number (0-15)")) + "</label>";
   html += "<input type=\"number\" id=\"scene\" name=\"scene\" value=\"0\" min=\"0\" max=\"15\">";
   html += "</div>";
 
-  html += "<button type=\"submit\">Send Command</button>";
+  html += "<button type=\"submit\">" + String(tr("Parancs küldése", "Send Command")) + "</button>";
   html += "</form>";
 
   html += "<div style=\"margin-top:20px;\">";
-  html += "<h2 style=\"font-size:16px;margin-bottom:12px;\">Quick Presets</h2>";
+  html += "<h2 style=\"font-size:16px;margin-bottom:12px;\">" + String(tr("Gyors beállítások", "Quick Presets")) + "</h2>";
   html += "<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:8px;\">";
-  html += "<button onclick=\"sendPreset(255, 'off')\" style=\"width:auto;padding:10px;font-size:14px;\">All Off</button>";
-  html += "<button onclick=\"sendPreset(255, 'max')\" style=\"width:auto;padding:10px;font-size:14px;\">All Max</button>";
-  html += "<button onclick=\"sendPreset(255, 'set_brightness', 64)\" style=\"width:auto;padding:10px;font-size:14px;\">All 25%</button>";
-  html += "<button onclick=\"sendPreset(255, 'set_brightness', 128)\" style=\"width:auto;padding:10px;font-size:14px;\">All 50%</button>";
+  html += "<button onclick=\"sendPreset(255, 'off')\" style=\"width:auto;padding:10px;font-size:14px;\">" + String(tr("Mind ki", "All Off")) + "</button>";
+  html += "<button onclick=\"sendPreset(255, 'max')\" style=\"width:auto;padding:10px;font-size:14px;\">" + String(tr("Mind max", "All Max")) + "</button>";
+  html += "<button onclick=\"sendPreset(255, 'set_brightness', 64)\" style=\"width:auto;padding:10px;font-size:14px;\">" + String(tr("Mind 25%", "All 25%")) + "</button>";
+  html += "<button onclick=\"sendPreset(255, 'set_brightness', 128)\" style=\"width:auto;padding:10px;font-size:14px;\">" + String(tr("Mind 50%", "All 50%")) + "</button>";
   html += "</div></div>";
 
   html += "</div>";
 
-  html += "<div class=\"card\"><h2>Device Scan</h2>";
-  html += "<p class=\"subtitle\">Discover DALI devices on the bus</p>";
-  html += "<button onclick=\"scanDevices()\">Scan for Devices</button>";
+  html += "<div class=\"card\"><h2>" + String(tr("Eszközkeresés", "Device Scan")) + "</h2>";
+  html += "<p class=\"subtitle\">" + String(tr("DALI eszközök felderítése a buszon", "Discover DALI devices on the bus")) + "</p>";
+  html += "<button onclick=\"scanDevices()\">" + String(tr("Eszközök keresése", "Scan for Devices")) + "</button>";
   html += "<div id=\"scan-results\" style=\"margin-top:16px;\"></div>";
   html += "</div>";
 
-  html += "<div class=\"card\"><h2>Observed Devices</h2>";
-  html += "<p class=\"subtitle\">Devices seen on the bus (passive discovery, no persistence)</p>";
-  html += "<button onclick=\"refreshPassiveDevices()\">Refresh</button>";
-  html += "<div id=\"passive-devices\" style=\"margin-top:16px;\"><p style=\"color:var(--text-secondary);\">Click Refresh to load...</p></div>";
+  html += "<div class=\"card\"><h2>" + String(tr("Megfigyelt eszközök", "Observed Devices")) + "</h2>";
+  html += "<p class=\"subtitle\">" + String(tr("A buszon látott eszközök (passzív felderítés, nincs tárolás)", "Devices seen on the bus (passive discovery, no persistence)")) + "</p>";
+  html += "<button onclick=\"refreshPassiveDevices()\">" + String(tr("Frissítés", "Refresh")) + "</button>";
+  html += "<div id=\"passive-devices\" style=\"margin-top:16px;\"><p style=\"color:var(--text-secondary);\">" + String(tr("Kattintson a Frissítés gombra a betöltéshez...", "Click Refresh to load...")) + "</p></div>";
   html += "</div>";
 
-  html += "<div class=\"card\"><h2>Device Commissioning</h2>";
-  html += "<p class=\"subtitle\">Automatically assign addresses to unaddressed devices</p>";
+  html += "<div class=\"card\"><h2>" + String(tr("Eszközök címzése", "Device Commissioning")) + "</h2>";
+  html += "<p class=\"subtitle\">" + String(tr("Címek automatikus kiosztása a cím nélküli eszközöknek", "Automatically assign addresses to unaddressed devices")) + "</p>";
   html += "<div style=\"margin-bottom:16px;\">";
-  html += "<label for=\"start-address\">Starting Address (0-63)</label>";
+  html += "<label for=\"start-address\">" + String(tr("Kezdő cím (0-63)", "Starting Address (0-63)")) + "</label>";
   html += "<input type=\"number\" id=\"start-address\" name=\"start-address\" value=\"0\" min=\"0\" max=\"63\" style=\"width:100%;padding:12px;border:2px solid var(--border-color);border-radius:8px;font-size:16px;margin-bottom:8px;background:var(--bg-primary);color:var(--text-primary);\">";
-  html += "<p style=\"color:var(--text-secondary);font-size:13px;margin:0 0 12px 0;\">Devices will be assigned sequential addresses starting from this number</p>";
+  html += "<p style=\"color:var(--text-secondary);font-size:13px;margin:0 0 12px 0;\">" + String(tr("Az eszközök ettől a számtól kezdve kapnak egymást követő címeket", "Devices will be assigned sequential addresses starting from this number")) + "</p>";
   html += "</div>";
-  html += "<button onclick=\"startCommissioning()\" id=\"commission-btn\" style=\"background:var(--accent-purple);\">Start Commissioning</button>";
+  html += "<button onclick=\"startCommissioning()\" id=\"commission-btn\" style=\"background:var(--accent-purple);\">" + String(tr("Címzés indítása", "Start Commissioning")) + "</button>";
   html += "<div id=\"commission-progress\" style=\"display:none;margin-top:20px;padding:16px;background:var(--bg-secondary);border-radius:8px;\">";
   html += "<div style=\"display:flex;align-items:center;gap:12px;margin-bottom:12px;\">";
   html += "<div class=\"spinner\" style=\"width:24px;height:24px;border:3px solid var(--border-color);border-top-color:var(--accent-purple);border-radius:50%;animation:spin 1s linear infinite;\"></div>";
-  html += "<h3 id=\"commission-state\" style=\"margin:0;font-size:16px;\">Initializing...</h3>";
+  html += "<h3 id=\"commission-state\" style=\"margin:0;font-size:16px;\">" + String(tr("Inicializálás...", "Initializing...")) + "</h3>";
   html += "</div>";
   html += "<div style=\"background:var(--bg-primary);border-radius:6px;height:8px;overflow:hidden;margin-bottom:12px;\">";
   html += "<div id=\"commission-bar\" style=\"height:100%;background:var(--accent-purple);width:0%;transition:width 0.3s;\"></div>";
   html += "</div>";
-  html += "<p id=\"commission-message\" style=\"margin:0;font-size:14px;color:var(--text-secondary);\">Starting commissioning process...</p>";
+  html += "<p id=\"commission-message\" style=\"margin:0;font-size:14px;color:var(--text-secondary);\">" + String(tr("Címzési folyamat indítása...", "Starting commissioning process...")) + "</p>";
   html += "<div id=\"commission-stats\" style=\"margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;\">";
-  html += "<div style=\"background:var(--bg-primary);padding:8px;border-radius:4px;\"><strong>Found:</strong> <span id=\"devices-found\">0</span></div>";
-  html += "<div style=\"background:var(--bg-primary);padding:8px;border-radius:4px;\"><strong>Programmed:</strong> <span id=\"devices-programmed\">0</span></div>";
+  html += "<div style=\"background:var(--bg-primary);padding:8px;border-radius:4px;\"><strong>" + String(tr("Talált:", "Found:")) + "</strong> <span id=\"devices-found\">0</span></div>";
+  html += "<div style=\"background:var(--bg-primary);padding:8px;border-radius:4px;\"><strong>" + String(tr("Beprogramozva:", "Programmed:")) + "</strong> <span id=\"devices-programmed\">0</span></div>";
   html += "</div>";
   html += "</div>";
   html += "<div id=\"commission-results\" style=\"display:none;margin-top:16px;\"></div>";
@@ -118,7 +120,7 @@ void handleFunctionPage() {
   html += "fetch('/dali/send',{method:'POST',body:form})";
   html += ".then(r=>r.json())";
   html += ".then(d=>showModal(d.title,d.message,d.success))";
-  html += ".catch(e=>showModal('✗ Error','Failed to send command: '+e,false));}";
+  html += ".catch(e=>showModal('" + String(tr("✗ Hiba", "✗ Error")) + "','" + String(tr("A parancs küldése sikertelen: ", "Failed to send command: ")) + "'+e,false));}";
   html += "function updateCommandForm(){";
   html += "const cmd=document.getElementById('command').value;";
   html += "const addr=document.getElementById('address');";
@@ -133,32 +135,32 @@ void handleFunctionPage() {
   html += "fetch('/dali/send',{method:'POST',body:form})";
   html += ".then(r=>r.json())";
   html += ".then(d=>showModal(d.title,d.message,d.success))";
-  html += ".catch(e=>showModal('✗ Error','Failed to send command: '+e,false));}";
+  html += ".catch(e=>showModal('" + String(tr("✗ Hiba", "✗ Error")) + "','" + String(tr("A parancs küldése sikertelen: ", "Failed to send command: ")) + "'+e,false));}";
 
   html += "function scanDevices(){";
-  html += "document.getElementById('scan-results').innerHTML='<p>Scanning...</p>';";
+  html += "document.getElementById('scan-results').innerHTML='<p>" + String(tr("Keresés...", "Scanning...")) + "</p>';";
   html += "fetch('/dali/scan',{method:'POST'}).then(r=>r.json()).then(d=>{";
-  html += "let html='<p>Found '+d.total_found+' devices:</p><ul>';";
-  html += "d.devices.forEach(dev=>html+='<li>Address '+dev.address+' - '+dev.status+'</li>');";
+  html += "let html='<p>" + String(tr("Talált ", "Found ")) + "'+d.total_found+'" + String(tr(" eszközt:", " devices:")) + "</p><ul>';";
+  html += "d.devices.forEach(dev=>html+='<li>" + String(tr("Cím ", "Address ")) + "'+dev.address+' - '+dev.status+'</li>');";
   html += "html+='</ul>';document.getElementById('scan-results').innerHTML=html;";
-  html += "}).catch(e=>document.getElementById('scan-results').innerHTML='<p>Error: '+e+'</p>');";
+  html += "}).catch(e=>document.getElementById('scan-results').innerHTML='<p>" + String(tr("Hiba: ", "Error: ")) + "'+e+'</p>');";
   html += "}";
   html += "function refreshPassiveDevices(){";
-  html += "document.getElementById('passive-devices').innerHTML='<p>Loading...</p>';";
+  html += "document.getElementById('passive-devices').innerHTML='<p>" + String(tr("Betöltés...", "Loading...")) + "</p>';";
   html += "fetch('/api/passive_devices').then(r=>r.json()).then(d=>{";
-  html += "if(d.count===0){document.getElementById('passive-devices').innerHTML='<p style=\"color:var(--text-secondary);\">No devices observed yet. Traffic on the bus will be learned automatically.</p>';return;}";
-  html += "let html='<p>'+d.count+' device(s) observed:</p>';";
+  html += "if(d.count===0){document.getElementById('passive-devices').innerHTML='<p style=\"color:var(--text-secondary);\">" + String(tr("Még nincs megfigyelt eszköz. A buszon zajló forgalom automatikusan megtanulásra kerül.", "No devices observed yet. Traffic on the bus will be learned automatically.")) + "</p>';return;}";
+  html += "let html='<p>'+d.count+'" + String(tr(" megfigyelt eszköz:", " device(s) observed:")) + "</p>';";
   html += "html+='<div style=\"display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;\">';";
   html += "d.devices.forEach(dev=>{";
   html += "let age=dev.last_seen<60?dev.last_seen+'s':(dev.last_seen<3600?Math.floor(dev.last_seen/60)+'m':Math.floor(dev.last_seen/3600)+'h');";
   html += "let lvl=dev.level>=0?dev.level:'?';";
   html += "html+='<div style=\"background:var(--bg-secondary);padding:10px;border-radius:6px;text-align:center;\">';";
   html += "html+='<div style=\"font-weight:600;font-size:18px;\">'+dev.address+'</div>';";
-  html += "html+='<div style=\"font-size:12px;color:var(--text-secondary);\">Level: '+lvl+'</div>';";
-  html += "html+='<div style=\"font-size:11px;color:var(--text-secondary);\">'+age+' ago</div>';";
+  html += "html+='<div style=\"font-size:12px;color:var(--text-secondary);\">" + String(tr("Szint: ", "Level: ")) + "'+lvl+'</div>';";
+  html += "html+='<div style=\"font-size:11px;color:var(--text-secondary);\">'+age+'" + String(tr(" ezelőtt", " ago")) + "</div>';";
   html += "html+='</div>';});";
   html += "html+='</div>';document.getElementById('passive-devices').innerHTML=html;";
-  html += "}).catch(e=>document.getElementById('passive-devices').innerHTML='<p>Error: '+e+'</p>');";
+  html += "}).catch(e=>document.getElementById('passive-devices').innerHTML='<p>" + String(tr("Hiba: ", "Error: ")) + "'+e+'</p>');";
   html += "}";
   html += "let commissionInterval=null;";
   html += "function startCommissioning(){";
@@ -169,8 +171,8 @@ void handleFunctionPage() {
   html += "fetch('/dali/commission',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'start_address='+startAddr})";
   html += ".then(r=>r.json()).then(d=>{";
   html += "if(d.success){commissionInterval=setInterval(pollCommissionProgress,500);}";
-  html += "else{showModal('✗ Error',d.message,false);document.getElementById('commission-btn').disabled=false;document.getElementById('commission-progress').style.display='none';}";
-  html += "}).catch(e=>{showModal('✗ Error','Failed to start commissioning: '+e,false);document.getElementById('commission-btn').disabled=false;document.getElementById('commission-progress').style.display='none';});}";
+  html += "else{showModal('" + String(tr("✗ Hiba", "✗ Error")) + "',d.message,false);document.getElementById('commission-btn').disabled=false;document.getElementById('commission-progress').style.display='none';}";
+  html += "}).catch(e=>{showModal('" + String(tr("✗ Hiba", "✗ Error")) + "','" + String(tr("A címzés indítása sikertelen: ", "Failed to start commissioning: ")) + "'+e,false);document.getElementById('commission-btn').disabled=false;document.getElementById('commission-progress').style.display='none';});}";
   html += "function pollCommissionProgress(){";
   html += "fetch('/api/commission/progress').then(r=>r.json()).then(d=>{";
   html += "document.getElementById('commission-state').textContent=d.state.charAt(0).toUpperCase()+d.state.slice(1);";
@@ -184,11 +186,11 @@ void handleFunctionPage() {
   html += "setTimeout(()=>{document.getElementById('commission-progress').style.display='none';";
   html += "let resultHtml='<div style=\"padding:16px;background:var(--bg-secondary);border-radius:8px;\">';";
   html += "if(d.state==='complete'){";
-  html += "resultHtml+='<h3 style=\"color:var(--accent-green);margin:0 0 8px 0;\">✓ Commissioning Complete</h3>';";
-  html += "resultHtml+='<p style=\"margin:0;\">Successfully programmed '+d.devices_programmed+' device(s)</p>';";
-  html += "if(d.devices_programmed>0){resultHtml+='<p style=\"margin:8px 0 0 0;font-size:13px;color:var(--text-secondary);\">Addresses '+d.current_address+' to '+(d.next_free_address-1)+'</p>';}";
+  html += "resultHtml+='<h3 style=\"color:var(--accent-green);margin:0 0 8px 0;\">" + String(tr("✓ Címzés befejezve", "✓ Commissioning Complete")) + "</h3>';";
+  html += "resultHtml+='<p style=\"margin:0;\">" + String(tr("Sikeresen beprogramozva: ", "Successfully programmed ")) + "'+d.devices_programmed+'" + String(tr(" eszköz", " device(s)")) + "</p>';";
+  html += "if(d.devices_programmed>0){resultHtml+='<p style=\"margin:8px 0 0 0;font-size:13px;color:var(--text-secondary);\">" + String(tr("Címek: ", "Addresses ")) + "'+d.current_address+'" + String(tr(" - ", " to ")) + "'+(d.next_free_address-1)+'</p>';}";
   html += "}else{";
-  html += "resultHtml+='<h3 style=\"color:#ef4444;margin:0 0 8px 0;\">✗ Commissioning Failed</h3>';";
+  html += "resultHtml+='<h3 style=\"color:#ef4444;margin:0 0 8px 0;\">" + String(tr("✗ A címzés sikertelen", "✗ Commissioning Failed")) + "</h3>';";
   html += "resultHtml+='<p style=\"margin:0;\">'+d.status_message+'</p>';}";
   html += "resultHtml+='</div>';";
   html += "document.getElementById('commission-results').innerHTML=resultHtml;";
@@ -224,14 +226,14 @@ void handleDALISend() {
   String json = "{";
   if (valid && enqueueDaliCommand(cmd)) {
     json += "\"success\":true,";
-    json += "\"title\":\"✓ Command Sent\",";
-    json += "\"message\":\"Command queued successfully and will be sent to the DALI bus.\"";
+    json += "\"title\":\"" + String(tr("✓ Parancs elküldve", "✓ Command Sent")) + "\",";
+    json += "\"message\":\"" + String(tr("A parancs sikeresen sorba állítva, hamarosan a DALI buszra kerül.", "Command queued successfully and will be sent to the DALI bus.")) + "\"";
     json += "}";
     server.send(200, "application/json", json);
   } else {
     json += "\"success\":false,";
-    json += "\"title\":\"✗ Command Failed\",";
-    json += "\"message\":\"Invalid command or queue full. Please check your parameters and try again.\"";
+    json += "\"title\":\"" + String(tr("✗ A parancs sikertelen", "✗ Command Failed")) + "\",";
+    json += "\"message\":\"" + String(tr("Érvénytelen parancs vagy megtelt a sor. Ellenőrizze a paramétereket és próbálja újra.", "Invalid command or queue full. Please check your parameters and try again.")) + "\"";
     json += "}";
     server.send(400, "application/json", json);
   }
@@ -264,7 +266,7 @@ void handleDALICommission() {
 
   String json = "{";
   json += "\"success\":true,";
-  json += "\"message\":\"Commissioning started\"";
+  json += "\"message\":\"" + String(tr("Címzés elindítva", "Commissioning started")) + "\"";
   json += "}";
   server.send(200, "application/json", json);
 

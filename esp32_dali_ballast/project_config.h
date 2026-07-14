@@ -19,14 +19,14 @@
 #define MQTT_DEFAULT_CLIENT_PREFIX "dali-ballast"
 
 // Navigation - Function page
-#define NAV_FUNCTION_NAME "DALI"
-#define NAV_FUNCTION_URL "/dali"
+#define APP_NAV_NAME "DALI"
+#define APP_NAV_URL "/dali"
 
 // Hardware - Built-in LED (WS2812 on GPIO21)
 #define BUILTIN_LED_PIN 21
 
-// Feature flags
-#define ENABLE_MQTT_FILTER_UI false
+// No feature flags: ENABLE_MQTT_FILTER_UI stays at the base default (0), so the
+// appMqttFilter* hooks fall back to the base's weak no-op defaults.
 
 // =============================================================================
 // DALI Hardware Configuration

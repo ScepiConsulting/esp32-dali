@@ -1,3 +1,0 @@
-[submodule "esp32-base"]
-	path = esp32-base
-	url = git@github.com:ScepiConsulting/esp32-base.git

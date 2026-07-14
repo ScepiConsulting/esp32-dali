@@ -19,14 +19,15 @@
 #define MQTT_DEFAULT_CLIENT_PREFIX "dali-bridge"
 
 // Navigation - Function page
-#define NAV_FUNCTION_NAME "DALI"
-#define NAV_FUNCTION_URL "/dali"
+#define APP_NAV_NAME "DALI"
+#define APP_NAV_URL "/dali"
 
 // Hardware - Built-in LED (not used, DALI uses GPIO17/14)
 #define BUILTIN_LED_PIN 2
 
-// Feature flags
-#define ENABLE_MQTT_FILTER_UI true
+// Feature flags — enables the appMqttFilter* hooks (the monitor filter UI on the
+// MQTT settings page). The base defaults this to 0 when a project omits it.
+#define ENABLE_MQTT_FILTER_UI 1
 
 // =============================================================================
 // DALI Hardware Configuration

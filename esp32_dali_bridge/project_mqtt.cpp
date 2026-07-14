@@ -1,8 +1,10 @@
 #include "project_mqtt.h"
+#include "base_api.h"
 #include "project_config.h"
 #include "project_function.h"
 #include "base_mqtt.h"
 #include "base_web.h"
+#include "base_i18n.h"
 #include "project_dali_handler.h"
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -30,7 +32,7 @@ void loadMonitorFilter() {
   prefs.end();
 }
 
-void onMqttConnected() {
+void appMqttConnected() {
 #ifdef DEBUG_SERIAL
   Serial.println("[MQTT] Connected - subscribing to DALI topics");
 #endif
@@ -42,7 +44,7 @@ void onMqttConnected() {
   mqttSubscribe(mqtt_prefix + "commission/trigger");
 }
 
-void onMqttMessage(const String& topic, const String& payload) {
+void appMqttMessage(const String& topic, const String& payload) {
 #ifdef DEBUG_SERIAL
   Serial.printf("[MQTT] Message on %s: %s\n", topic.c_str(), payload.c_str());
 #endif
@@ -205,58 +207,58 @@ void publishCommissioningProgress(const CommissioningProgress& progress) {
   mqttPublish(topic, json, false);
 }
 
-String getMqttTopicsHTML() {
+String appMqttTopicsHTML() {
   String html = "";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Command:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "command</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Subscribe to this topic to send commands to DALI devices</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Parancs", "Command") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "command</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Iratkozz fel erre a topicra, hogy parancsokat küldj a DALI eszközöknek", "Subscribe to this topic to send commands to DALI devices") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Command</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Parancs", "Example: Command") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"command\": \"set_brightness\",<br>  \"address\": 0,<br>  \"level\": 128<br>}</pre></details>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Monitor:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "monitor</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Publishes all DALI bus activity with source field (self/bus)</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Monitor", "Monitor") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "monitor</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Publikálja a teljes DALI busz-forgalmat forrás mezővel (self/bus)", "Publishes all DALI bus activity with source field (self/bus)") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Monitor Message</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Monitor üzenet", "Example: Monitor Message") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"timestamp\": 1234567890,<br>  \"direction\": \"tx\",<br>  \"source\": \"self\",<br>  \"raw\": \"01FE\",<br>  \"parsed\": {<br>    \"type\": \"direct_arc_power\",<br>    \"address\": 0,<br>    \"level\": 254<br>  }<br>}</pre></details>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Status:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "status</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Device status published on connect and periodically</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Állapot", "Status") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "status</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Eszközállapot publikálva csatlakozáskor és rendszeres időközönként", "Device status published on connect and periodically") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Status</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Állapot", "Example: Status") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"status\": \"online\",<br>  \"uptime\": 12345,<br>  \"ip\": \"192.168.1.100\",<br>  \"client_id\": \"dali-bridge-AABBCC\"<br>}</pre></details>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Scan Trigger:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "scan/trigger</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Publish to trigger a DALI bus scan</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Keresés indítása", "Scan Trigger") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "scan/trigger</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Publikálj ide a DALI busz-keresés elindításához", "Publish to trigger a DALI bus scan") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Scan Trigger</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Keresés indítása", "Example: Scan Trigger") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{\"scan\": true}</pre></details>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Scan Result:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "scan/result</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Scan results published after completion</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Keresés eredménye", "Scan Result") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "scan/result</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("A keresés eredménye a befejezés után publikálva", "Scan results published after completion") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Scan Result</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Keresés eredménye", "Example: Scan Result") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"timestamp\": 1234567890,<br>  \"total_found\": 3,<br>  \"devices\": [<br>    {\"address\": 0, \"status\": \"responsive\"},<br>    {\"address\": 1, \"status\": \"responsive\"},<br>    {\"address\": 5, \"status\": \"responsive\"}<br>  ]<br>}</pre></details>";
 
   html += "<hr style=\"margin:20px 0;border:none;border-top:1px solid var(--border-color);\">";
-  html += "<h3 style=\"margin:16px 0 8px 0;font-size:15px;color:var(--accent-purple);\">🔧 Commissioning</h3>";
+  html += String("<h3 style=\"margin:16px 0 8px 0;font-size:15px;color:var(--accent-purple);\">🔧 ") + tr("Címzés", "Commissioning") + "</h3>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Commission Trigger:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "commission/trigger</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Publish starting address (0-63) to begin commissioning</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Címzés indítása", "Commission Trigger") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "commission/trigger</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Publikáld a kezdő címet (0-63) a címzés elindításához", "Publish starting address (0-63) to begin commissioning") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Commission Trigger</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Címzés indítása", "Example: Commission Trigger") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{\"start_address\": 0}</pre></details>";
 
-  html += "<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>Commission Progress:</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "commission/progress</code></p>";
-  html += "<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">Real-time progress updates during commissioning</p>";
+  html += String("<p style=\"margin:12px 0 4px 0;color:var(--text-secondary);\"><strong>") + tr("Címzés folyamata", "Commission Progress") + ":</strong> <code style=\"background:var(--bg-primary);padding:2px 6px;border-radius:3px;font-family:monospace;\">" + mqtt_prefix + "commission/progress</code></p>";
+  html += String("<p style=\"margin:0 0 8px 0;font-size:12px;color:var(--text-secondary);\">") + tr("Valós idejű állapotfrissítések a címzés alatt", "Real-time progress updates during commissioning") + "</p>";
   html += "<details style=\"margin:8px 0;padding:8px;background:var(--bg-primary);border-radius:4px;\">";
-  html += "<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ Example: Commission Progress</summary>";
+  html += String("<summary style=\"cursor:pointer;color:var(--accent-green);font-weight:500;\">▸ ") + tr("Példa: Címzés folyamata", "Example: Commission Progress") + "</summary>";
   html += "<pre style=\"background:var(--bg-secondary);padding:12px;border-radius:6px;overflow-x:auto;margin:8px 0;font-size:12px;\">{<br>  \"state\": \"programming\",<br>  \"devices_found\": 2,<br>  \"devices_programmed\": 1,<br>  \"current_address\": 1,<br>  \"progress_percent\": 50,<br>  \"status_message\": \"Programming device...\"<br>}</pre></details>";
 
   return html;
 }
 
-String getMqttFilterConfigHTML() {
+String appMqttFilterConfigHTML() {
   Preferences prefs;
   prefs.begin("mqtt", true);
   bool mon_dapc = prefs.getBool("mon_dapc", true);
@@ -269,40 +271,40 @@ String getMqttFilterConfigHTML() {
   prefs.end();
 
   String html = "";
-  html += "<h2 style=\"margin-top:24px;margin-bottom:12px;font-size:18px;\">Monitor Topic Filters</h2>";
-  html += "<p style=\"margin-bottom:16px;color:var(--text-secondary);font-size:14px;\">Select which message types to publish to the monitor topic</p>";
+  html += String("<h2 style=\"margin-top:24px;margin-bottom:12px;font-size:18px;\">") + tr("Monitor topic szűrők", "Monitor Topic Filters") + "</h2>";
+  html += String("<p style=\"margin-bottom:16px;color:var(--text-secondary);font-size:14px;\">") + tr("Válaszd ki, mely üzenettípusok kerüljenek publikálásra a monitor topicra", "Select which message types to publish to the monitor topic") + "</p>";
   html += "<div style=\"display:grid;gap:8px;\">";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_dapc\" value=\"1\"" + String(mon_dapc ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>DAPC (Direct Arc Power / Brightness)</span></label>";
+  html += String("<span>") + tr("DAPC (Direct Arc Power / Fényerő)", "DAPC (Direct Arc Power / Brightness)") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_ctrl\" value=\"1\"" + String(mon_ctrl ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Control Commands (Off, Up, Down, etc.)</span></label>";
+  html += String("<span>") + tr("Vezérlő parancsok (Ki, Fel, Le, stb.)", "Control Commands (Off, Up, Down, etc.)") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_query\" value=\"1\"" + String(mon_query ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Query Commands (Status, Level, etc.)</span></label>";
+  html += String("<span>") + tr("Lekérdezések (Állapot, Szint, stb.)", "Query Commands (Status, Level, etc.)") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_resp\" value=\"1\"" + String(mon_resp ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Responses (Backward frames from ballasts)</span></label>";
+  html += String("<span>") + tr("Válaszok (Visszirányú keretek az előtétekről)", "Responses (Backward frames from ballasts)") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_comm\" value=\"1\"" + String(mon_comm ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Commissioning Commands</span></label>";
+  html += String("<span>") + tr("Címzési parancsok", "Commissioning Commands") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_self\" value=\"1\"" + String(mon_self ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Self-sent (Commands from this bridge)</span></label>";
+  html += String("<span>") + tr("Saját küldésű (A bridge által küldött parancsok)", "Self-sent (Commands from this bridge)") + "</span></label>";
   html += "<label style=\"display:flex;align-items:center;cursor:pointer;\">";
   html += "<input type=\"checkbox\" name=\"mon_bus\" value=\"1\"" + String(mon_bus ? " checked" : "") + " style=\"margin-right:8px;\">";
-  html += "<span>Bus Traffic (Commands from other devices)</span></label>";
+  html += String("<span>") + tr("Busz-forgalom (Más eszközök parancsai)", "Bus Traffic (Commands from other devices)") + "</span></label>";
   html += "</div>";
 
   return html;
 }
 
-void loadMqttFilterSettings() {
+void appMqttFilterLoad() {
   loadMonitorFilter();
 }
 
-void saveMqttFilterSettings() {
+void appMqttFilterSave() {
   Preferences prefs;
   prefs.begin("mqtt", false);
   prefs.putBool("mon_dapc", server.hasArg("mon_dapc"));

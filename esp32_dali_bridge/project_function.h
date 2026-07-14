@@ -4,8 +4,6 @@
 #include <Arduino.h>
 #include "project_dali_handler.h"
 
-void functionInit();
-void functionLoop();
 void handleFunctionPage();
 void handleDALISend();
 void handleDALIScan();
